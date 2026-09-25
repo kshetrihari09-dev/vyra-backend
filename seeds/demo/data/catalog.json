@@ -1,0 +1,3299 @@
+{
+ "brands": [
+  {
+   "id": "gsk",
+   "name": "GSK",
+   "tint": "#E7F0FC",
+   "fg": "#2B6CB0"
+  },
+  {
+   "id": "cipla",
+   "name": "Cipla",
+   "tint": "#E9FAF6",
+   "fg": "#0FAF8F"
+  },
+  {
+   "id": "sunpharma",
+   "name": "Sun Pharma",
+   "tint": "#FCEAEC",
+   "fg": "#D9524A"
+  },
+  {
+   "id": "healthvit",
+   "name": "HealthVit",
+   "tint": "#FCF3E3",
+   "fg": "#E0A427"
+  },
+  {
+   "id": "drtrust",
+   "name": "Dr. Trust",
+   "tint": "#F1ECFC",
+   "fg": "#7C5CD6"
+  },
+  {
+   "id": "mothercare",
+   "name": "Mothercare",
+   "tint": "#F1ECFC",
+   "fg": "#7C5CD6"
+  },
+  {
+   "id": "freshfields",
+   "name": "FreshFields",
+   "tint": "#E9FAF6",
+   "fg": "#128C6C"
+  },
+  {
+   "id": "dailybrew",
+   "name": "Daily Brew",
+   "tint": "#F3EDE6",
+   "fg": "#8A6A44"
+  },
+  {
+   "id": "auralux",
+   "name": "AuraLux",
+   "tint": "#FDECE6",
+   "fg": "#D65D46"
+  },
+  {
+   "id": "novatech",
+   "name": "NovaTech",
+   "tint": "#E7F0FC",
+   "fg": "#1E5FA8"
+  },
+  {
+   "id": "homecraft",
+   "name": "HomeCraft",
+   "tint": "#EFF3F5",
+   "fg": "#4A5F6B"
+  },
+  {
+   "id": "inkwell",
+   "name": "Inkwell",
+   "tint": "#E7F0FC",
+   "fg": "#2B6CB0"
+  },
+  {
+   "id": "pawsome",
+   "name": "Pawsome",
+   "tint": "#FCF3E3",
+   "fg": "#C98A2E"
+  },
+  {
+   "id": "urbanthread",
+   "name": "UrbanThread",
+   "tint": "#EFEDF7",
+   "fg": "#5C46B0"
+  },
+  {
+   "id": "himalaya",
+   "name": "Himalaya Wellness",
+   "tint": "#E9F7EE",
+   "fg": "#2F7A4D"
+  }
+ ],
+ "categories": [
+  {
+   "id": "grocery",
+   "name": "Grocery",
+   "slug": "grocery",
+   "parent": null,
+   "order": 1,
+   "status": "active",
+   "icon": "ShoppingBasket",
+   "image": "bag",
+   "tint": "#E9F7EE",
+   "fg": "#128C6C",
+   "unitLabel": "pack",
+   "description": "Everyday staples, snacks and drinks delivered in minutes.",
+   "attributes": [
+    {
+     "key": "weight",
+     "label": "Net Weight",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": true
+    },
+    {
+     "key": "packSize",
+     "label": "Pack Size",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    },
+    {
+     "key": "ingredients",
+     "label": "Ingredients",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    },
+    {
+     "key": "origin",
+     "label": "Country of Origin",
+     "type": "text",
+     "options": null,
+     "filterable": true,
+     "highlight": false
+    },
+    {
+     "key": "shelfLife",
+     "label": "Shelf Life",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    },
+    {
+     "key": "dietary",
+     "label": "Dietary",
+     "type": "select",
+     "options": [
+      "Veg",
+      "Non-veg",
+      "Vegan"
+     ],
+     "filterable": true,
+     "highlight": true
+    }
+   ]
+  },
+  {
+   "id": "grocery-grains",
+   "name": "Rice & Grains",
+   "slug": "rice-grains",
+   "parent": "grocery",
+   "order": 1,
+   "status": "active",
+   "icon": "Wheat",
+   "image": "bag",
+   "tint": "#F5F0E3",
+   "fg": "#A9862F"
+  },
+  {
+   "id": "grocery-snacks",
+   "name": "Snacks",
+   "slug": "snacks",
+   "parent": "grocery",
+   "order": 2,
+   "status": "active",
+   "icon": "Cookie",
+   "image": "bag",
+   "tint": "#FCF3E3",
+   "fg": "#C98A2E"
+  },
+  {
+   "id": "grocery-beverages",
+   "name": "Beverages",
+   "slug": "beverages",
+   "parent": "grocery",
+   "order": 3,
+   "status": "active",
+   "icon": "CupSoda",
+   "image": "bottle",
+   "tint": "#E7F0FC",
+   "fg": "#2B6CB0"
+  },
+  {
+   "id": "grocery-dairy",
+   "name": "Dairy",
+   "slug": "dairy",
+   "parent": "grocery",
+   "order": 4,
+   "status": "active",
+   "icon": "Milk",
+   "image": "carton",
+   "tint": "#EEF4FA",
+   "fg": "#4A6B8A"
+  },
+  {
+   "id": "health",
+   "name": "Medicines & Healthcare",
+   "slug": "medicines-healthcare",
+   "parent": null,
+   "order": 2,
+   "status": "active",
+   "icon": "Stethoscope",
+   "image": "medbox",
+   "tint": "#E9FAF6",
+   "fg": "#0FAF8F",
+   "unitLabel": "pack",
+   "description": "Prescription and over-the-counter medicines, vitamins and first aid.",
+   "modules": [
+    "prescription",
+    "batch"
+   ],
+   "attributes": [
+    {
+     "key": "genericName",
+     "label": "Generic Name",
+     "type": "text",
+     "options": null,
+     "filterable": true,
+     "highlight": false
+    },
+    {
+     "key": "strength",
+     "label": "Strength",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": true
+    },
+    {
+     "key": "dosageForm",
+     "label": "Dosage Form",
+     "type": "select",
+     "options": [
+      "Tablet",
+      "Capsule",
+      "Syrup",
+      "Cream",
+      "Device"
+     ],
+     "filterable": true,
+     "highlight": true
+    },
+    {
+     "key": "manufacturer",
+     "label": "Manufacturer",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    },
+    {
+     "key": "prescription",
+     "label": "Prescription Required",
+     "type": "select",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "filterable": true,
+     "highlight": false
+    },
+    {
+     "key": "storage",
+     "label": "Storage",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    }
+   ]
+  },
+  {
+   "id": "health-medicines",
+   "name": "Medicines",
+   "slug": "medicines",
+   "parent": "health",
+   "order": 1,
+   "status": "active",
+   "icon": "Pill",
+   "image": "medbox",
+   "tint": "#E9FAF6",
+   "fg": "#0FAF8F",
+   "modules": [
+    "prescription",
+    "batch"
+   ]
+  },
+  {
+   "id": "health-vitamins",
+   "name": "Vitamins",
+   "slug": "vitamins",
+   "parent": "health",
+   "order": 2,
+   "status": "active",
+   "icon": "Leaf",
+   "image": "bottle",
+   "tint": "#FCF3E3",
+   "fg": "#E0A427",
+   "modules": [
+    "batch"
+   ]
+  },
+  {
+   "id": "health-firstaid",
+   "name": "First Aid",
+   "slug": "first-aid",
+   "parent": "health",
+   "order": 3,
+   "status": "active",
+   "icon": "BriefcaseMedical",
+   "image": "medbox",
+   "tint": "#FCEAEC",
+   "fg": "#D9524A",
+   "modules": [
+    "batch"
+   ]
+  },
+  {
+   "id": "health-devices",
+   "name": "Personal Health",
+   "slug": "personal-health",
+   "parent": "health",
+   "order": 4,
+   "status": "active",
+   "icon": "Activity",
+   "image": "device",
+   "tint": "#F1ECFC",
+   "fg": "#7C5CD6"
+  },
+  {
+   "id": "personal",
+   "name": "Personal Care",
+   "slug": "personal-care",
+   "parent": null,
+   "order": 3,
+   "status": "active",
+   "icon": "Sparkles",
+   "image": "bottle",
+   "tint": "#E9FAF6",
+   "fg": "#0FAF8F",
+   "unitLabel": "unit",
+   "description": "Daily care essentials for body, hair and oral health.",
+   "attributes": [
+    {
+     "key": "volume",
+     "label": "Volume / Weight",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": true
+    },
+    {
+     "key": "skinType",
+     "label": "Suitable For",
+     "type": "select",
+     "options": [
+      "All",
+      "Dry",
+      "Oily",
+      "Sensitive"
+     ],
+     "filterable": true,
+     "highlight": false
+    },
+    {
+     "key": "fragrance",
+     "label": "Fragrance",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    },
+    {
+     "key": "keyIngredients",
+     "label": "Key Ingredients",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    }
+   ]
+  },
+  {
+   "id": "personal-bath",
+   "name": "Bath & Body",
+   "slug": "bath-body",
+   "parent": "personal",
+   "order": 1,
+   "status": "active",
+   "icon": "Droplets",
+   "image": "bottle",
+   "tint": "#E7F2FC",
+   "fg": "#1E88C7"
+  },
+  {
+   "id": "personal-oral",
+   "name": "Oral Care",
+   "slug": "oral-care",
+   "parent": "personal",
+   "order": 2,
+   "status": "active",
+   "icon": "Smile",
+   "image": "tube",
+   "tint": "#E9FAF6",
+   "fg": "#0FAF8F"
+  },
+  {
+   "id": "beauty",
+   "name": "Beauty",
+   "slug": "beauty",
+   "parent": null,
+   "order": 4,
+   "status": "active",
+   "icon": "Gem",
+   "image": "cosmetic",
+   "tint": "#FDECE6",
+   "fg": "#D65D46",
+   "unitLabel": "unit",
+   "description": "Skin care, hair care and makeup from trusted brands.",
+   "attributes": [
+    {
+     "key": "shade",
+     "label": "Shade",
+     "type": "text",
+     "options": null,
+     "filterable": true,
+     "highlight": true
+    },
+    {
+     "key": "finish",
+     "label": "Finish",
+     "type": "select",
+     "options": [
+      "Matte",
+      "Dewy",
+      "Satin"
+     ],
+     "filterable": true,
+     "highlight": false
+    },
+    {
+     "key": "volume",
+     "label": "Volume",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    },
+    {
+     "key": "skinType",
+     "label": "Skin Type",
+     "type": "select",
+     "options": [
+      "All",
+      "Dry",
+      "Oily",
+      "Combination"
+     ],
+     "filterable": true,
+     "highlight": false
+    },
+    {
+     "key": "crueltyFree",
+     "label": "Cruelty Free",
+     "type": "select",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "filterable": true,
+     "highlight": false
+    }
+   ]
+  },
+  {
+   "id": "beauty-skin",
+   "name": "Skin Care",
+   "slug": "skin-care",
+   "parent": "beauty",
+   "order": 1,
+   "status": "active",
+   "icon": "Sun",
+   "image": "cosmetic",
+   "tint": "#FDECE6",
+   "fg": "#D65D46"
+  },
+  {
+   "id": "beauty-hair",
+   "name": "Hair Care",
+   "slug": "hair-care",
+   "parent": "beauty",
+   "order": 2,
+   "status": "active",
+   "icon": "Wind",
+   "image": "bottle",
+   "tint": "#F1ECFC",
+   "fg": "#7C5CD6"
+  },
+  {
+   "id": "beauty-makeup",
+   "name": "Makeup",
+   "slug": "makeup",
+   "parent": "beauty",
+   "order": 3,
+   "status": "active",
+   "icon": "Brush",
+   "image": "cosmetic",
+   "tint": "#FCEAEC",
+   "fg": "#E0546A"
+  },
+  {
+   "id": "baby",
+   "name": "Baby Care",
+   "slug": "baby-care",
+   "parent": null,
+   "order": 5,
+   "status": "active",
+   "icon": "Baby",
+   "image": "tube",
+   "tint": "#F1ECFC",
+   "fg": "#7C5CD6",
+   "unitLabel": "pack",
+   "description": "Gentle, dermatologist-tested essentials for little ones.",
+   "attributes": [
+    {
+     "key": "ageGroup",
+     "label": "Age Group",
+     "type": "select",
+     "options": [
+      "0-6 months",
+      "6-12 months",
+      "1-3 years"
+     ],
+     "filterable": true,
+     "highlight": true
+    },
+    {
+     "key": "volume",
+     "label": "Size",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    },
+    {
+     "key": "dermatologistTested",
+     "label": "Dermatologist Tested",
+     "type": "select",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "filterable": true,
+     "highlight": false
+    }
+   ]
+  },
+  {
+   "id": "household",
+   "name": "Household",
+   "slug": "household",
+   "parent": null,
+   "order": 6,
+   "status": "active",
+   "icon": "SprayCan",
+   "image": "bottle",
+   "tint": "#EFF3F5",
+   "fg": "#4A5F6B",
+   "unitLabel": "unit",
+   "description": "Cleaning, laundry and everyday home supplies.",
+   "attributes": [
+    {
+     "key": "volume",
+     "label": "Volume",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": true
+    },
+    {
+     "key": "surface",
+     "label": "Suitable Surfaces",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    },
+    {
+     "key": "scent",
+     "label": "Scent",
+     "type": "text",
+     "options": null,
+     "filterable": true,
+     "highlight": false
+    }
+   ]
+  },
+  {
+   "id": "home",
+   "name": "Home & Kitchen",
+   "slug": "home-kitchen",
+   "parent": null,
+   "order": 7,
+   "status": "active",
+   "icon": "CookingPot",
+   "image": "box",
+   "tint": "#F3EDE6",
+   "fg": "#8A6A44",
+   "unitLabel": "piece",
+   "description": "Cookware, storage and everything that makes a house work.",
+   "attributes": [
+    {
+     "key": "material",
+     "label": "Material",
+     "type": "select",
+     "options": [
+      "Stainless Steel",
+      "Glass",
+      "Ceramic",
+      "Plastic"
+     ],
+     "filterable": true,
+     "highlight": true
+    },
+    {
+     "key": "capacity",
+     "label": "Capacity",
+     "type": "text",
+     "options": null,
+     "filterable": true,
+     "highlight": false
+    },
+    {
+     "key": "dishwasherSafe",
+     "label": "Dishwasher Safe",
+     "type": "select",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "filterable": false,
+     "highlight": false
+    },
+    {
+     "key": "warranty",
+     "label": "Warranty",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    }
+   ]
+  },
+  {
+   "id": "electronics",
+   "name": "Electronics",
+   "slug": "electronics",
+   "parent": null,
+   "order": 8,
+   "status": "active",
+   "icon": "Smartphone",
+   "image": "device",
+   "tint": "#E7F0FC",
+   "fg": "#1E5FA8",
+   "unitLabel": "piece",
+   "description": "Audio, wearables and everyday tech with official warranty.",
+   "attributes": [
+    {
+     "key": "ram",
+     "label": "RAM",
+     "type": "text",
+     "options": null,
+     "filterable": true,
+     "highlight": false
+    },
+    {
+     "key": "storage",
+     "label": "Storage",
+     "type": "text",
+     "options": null,
+     "filterable": true,
+     "highlight": true
+    },
+    {
+     "key": "color",
+     "label": "Colour",
+     "type": "text",
+     "options": null,
+     "filterable": true,
+     "highlight": false
+    },
+    {
+     "key": "warranty",
+     "label": "Warranty",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": true
+    },
+    {
+     "key": "model",
+     "label": "Model",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    },
+    {
+     "key": "power",
+     "label": "Battery / Power",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    }
+   ]
+  },
+  {
+   "id": "stationery",
+   "name": "Stationery",
+   "slug": "stationery",
+   "parent": null,
+   "order": 9,
+   "status": "active",
+   "icon": "PenLine",
+   "image": "box",
+   "tint": "#E7F0FC",
+   "fg": "#2B6CB0",
+   "unitLabel": "pack",
+   "description": "Notebooks, pens and desk supplies for work and school.",
+   "attributes": [
+    {
+     "key": "pageCount",
+     "label": "Pages",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    },
+    {
+     "key": "ruling",
+     "label": "Ruling",
+     "type": "select",
+     "options": [
+      "Ruled",
+      "Plain",
+      "Dotted",
+      "Grid"
+     ],
+     "filterable": true,
+     "highlight": true
+    },
+    {
+     "key": "size",
+     "label": "Size",
+     "type": "text",
+     "options": null,
+     "filterable": true,
+     "highlight": false
+    },
+    {
+     "key": "material",
+     "label": "Material",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    }
+   ]
+  },
+  {
+   "id": "pet",
+   "name": "Pet Care",
+   "slug": "pet-care",
+   "parent": null,
+   "order": 10,
+   "status": "active",
+   "icon": "PawPrint",
+   "image": "bag",
+   "tint": "#FCF3E3",
+   "fg": "#C98A2E",
+   "unitLabel": "pack",
+   "description": "Food, treats and grooming for cats and dogs.",
+   "attributes": [
+    {
+     "key": "petType",
+     "label": "Pet Type",
+     "type": "select",
+     "options": [
+      "Dog",
+      "Cat",
+      "Bird"
+     ],
+     "filterable": true,
+     "highlight": true
+    },
+    {
+     "key": "lifeStage",
+     "label": "Life Stage",
+     "type": "select",
+     "options": [
+      "Puppy/Kitten",
+      "Adult",
+      "Senior"
+     ],
+     "filterable": true,
+     "highlight": false
+    },
+    {
+     "key": "weight",
+     "label": "Net Weight",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    },
+    {
+     "key": "flavour",
+     "label": "Flavour",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    }
+   ]
+  },
+  {
+   "id": "fashion",
+   "name": "Fashion",
+   "slug": "fashion",
+   "parent": null,
+   "order": 11,
+   "status": "active",
+   "icon": "Shirt",
+   "image": "apparel",
+   "tint": "#EFEDF7",
+   "fg": "#5C46B0",
+   "unitLabel": "piece",
+   "description": "Everyday wear with easy returns and true-to-size fits.",
+   "attributes": [
+    {
+     "key": "size",
+     "label": "Size",
+     "type": "select",
+     "options": [
+      "S",
+      "M",
+      "L",
+      "XL"
+     ],
+     "filterable": true,
+     "highlight": true
+    },
+    {
+     "key": "color",
+     "label": "Colour",
+     "type": "text",
+     "options": null,
+     "filterable": true,
+     "highlight": false
+    },
+    {
+     "key": "material",
+     "label": "Material",
+     "type": "text",
+     "options": null,
+     "filterable": true,
+     "highlight": false
+    },
+    {
+     "key": "gender",
+     "label": "Gender",
+     "type": "select",
+     "options": [
+      "Men",
+      "Women",
+      "Unisex"
+     ],
+     "filterable": true,
+     "highlight": false
+    },
+    {
+     "key": "pattern",
+     "label": "Pattern",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    },
+    {
+     "key": "fit",
+     "label": "Fit",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    }
+   ]
+  },
+  {
+   "id": "accessories",
+   "name": "Accessories",
+   "slug": "accessories",
+   "parent": null,
+   "order": 12,
+   "status": "active",
+   "icon": "Watch",
+   "image": "apparel",
+   "tint": "#F0EFEA",
+   "fg": "#7A6A4F",
+   "unitLabel": "piece",
+   "description": "Bags, watches and the small things that finish a look.",
+   "attributes": [
+    {
+     "key": "material",
+     "label": "Material",
+     "type": "text",
+     "options": null,
+     "filterable": true,
+     "highlight": true
+    },
+    {
+     "key": "color",
+     "label": "Colour",
+     "type": "text",
+     "options": null,
+     "filterable": true,
+     "highlight": false
+    },
+    {
+     "key": "dimensions",
+     "label": "Dimensions",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    },
+    {
+     "key": "warranty",
+     "label": "Warranty",
+     "type": "text",
+     "options": null,
+     "filterable": false,
+     "highlight": false
+    }
+   ]
+  }
+ ],
+ "products": [
+  {
+   "id": "basmati-rice-5kg",
+   "name": "Aged Basmati Rice",
+   "slug": "aged-basmati-rice",
+   "categoryId": "grocery-grains",
+   "brandId": "freshfields",
+   "description": "Long-grain basmati aged for 12 months for a firmer bite and a fuller aroma. Cooks up fluffy and separate every time.",
+   "price": 14.5,
+   "salePrice": 11.6,
+   "tax": 0,
+   "sku": "GRO-RIC-5K",
+   "barcode": "8901234500011",
+   "unit": "bag",
+   "moq": 1,
+   "maxQty": 6,
+   "rating": 4.7,
+   "reviews": 1834,
+   "sold": 5210,
+   "createdAt": "2026-02-11",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "bestseller",
+    "popular",
+    "near"
+   ],
+   "art": {
+    "shape": "bag",
+    "color": "#A9862F",
+    "accent": "#F5F0E3"
+   },
+   "attributes": {
+    "weight": "5 kg",
+    "packSize": "1 bag",
+    "ingredients": "100% Basmati rice",
+    "origin": "India",
+    "shelfLife": "18 months",
+    "dietary": "Veg"
+   },
+   "variants": [
+    {
+     "id": "r1",
+     "label": "1 kg",
+     "options": {
+      "weight": "1 kg"
+     },
+     "price": 3.6,
+     "salePrice": 2.99,
+     "sku": "GRO-RIC-1K",
+     "stock": {
+      "store-01": 40,
+      "store-02": 18
+     }
+    },
+    {
+     "id": "r5",
+     "label": "5 kg",
+     "options": {
+      "weight": "5 kg"
+     },
+     "price": 14.5,
+     "salePrice": 11.6,
+     "sku": "GRO-RIC-5K",
+     "stock": {
+      "store-01": 22,
+      "store-02": 4
+     }
+    },
+    {
+     "id": "r10",
+     "label": "10 kg",
+     "options": {
+      "weight": "10 kg"
+     },
+     "price": 27,
+     "salePrice": 22.4,
+     "sku": "GRO-RIC-10K",
+     "stock": {
+      "store-01": 6,
+      "store-02": 0
+     }
+    }
+   ],
+   "position": 0,
+   "sellerId": "fresh-grocers"
+  },
+  {
+   "id": "olive-oil-1l",
+   "name": "Extra Virgin Olive Oil",
+   "slug": "extra-virgin-olive-oil",
+   "categoryId": "grocery",
+   "brandId": "freshfields",
+   "description": "Cold-pressed within hours of harvest. Peppery finish that holds up to heat, so it works for both dressing and searing.",
+   "price": 12.9,
+   "salePrice": 10.3,
+   "tax": 0,
+   "sku": "GRO-OIL-1L",
+   "barcode": "8901234500028",
+   "unit": "bottle",
+   "moq": 1,
+   "maxQty": 8,
+   "rating": 4.6,
+   "reviews": 742,
+   "sold": 1980,
+   "createdAt": "2026-04-02",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "popular",
+    "flash"
+   ],
+   "art": {
+    "shape": "bottle",
+    "color": "#7E9B3F",
+    "accent": "#EEF4E3"
+   },
+   "attributes": {
+    "weight": "1 L",
+    "packSize": "1 bottle",
+    "ingredients": "100% extra virgin olive oil",
+    "origin": "Spain",
+    "shelfLife": "24 months",
+    "dietary": "Vegan"
+   },
+   "stock": {
+    "store-01": 31,
+    "store-02": 12
+   },
+   "position": 1,
+   "sellerId": "fresh-grocers"
+  },
+  {
+   "id": "masala-chips",
+   "name": "Masala Potato Chips",
+   "slug": "masala-potato-chips",
+   "categoryId": "grocery-snacks",
+   "brandId": "freshfields",
+   "description": "Kettle-cooked slices tossed in a tangy masala blend. Thick cut, so they stay crunchy right to the bottom of the pack.",
+   "price": 2.2,
+   "salePrice": 1.65,
+   "tax": 0,
+   "sku": "GRO-SNK-150",
+   "barcode": "8901234500035",
+   "unit": "pack",
+   "moq": 1,
+   "maxQty": 20,
+   "rating": 4.4,
+   "reviews": 2210,
+   "sold": 8890,
+   "createdAt": "2026-06-19",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "flash",
+    "bestseller",
+    "near"
+   ],
+   "art": {
+    "shape": "bag",
+    "color": "#C98A2E",
+    "accent": "#FCF3E3"
+   },
+   "attributes": {
+    "weight": "150 g",
+    "packSize": "1 pack",
+    "ingredients": "Potato, sunflower oil, masala seasoning",
+    "origin": "India",
+    "shelfLife": "6 months",
+    "dietary": "Veg"
+   },
+   "stock": {
+    "store-01": 120,
+    "store-02": 64
+   },
+   "position": 2,
+   "sellerId": "fresh-grocers"
+  },
+  {
+   "id": "cold-brew-coffee",
+   "name": "Cold Brew Coffee Concentrate",
+   "slug": "cold-brew-coffee",
+   "categoryId": "grocery-beverages",
+   "brandId": "dailybrew",
+   "description": "Steeped 18 hours for a low-acid, chocolatey concentrate. One part coffee to three parts water or milk.",
+   "price": 8.5,
+   "salePrice": 7.2,
+   "tax": 0,
+   "sku": "GRO-BEV-CB",
+   "barcode": "8901234500042",
+   "unit": "bottle",
+   "moq": 1,
+   "maxQty": 10,
+   "rating": 4.8,
+   "reviews": 512,
+   "sold": 1340,
+   "createdAt": "2026-08-21",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "new",
+    "popular"
+   ],
+   "art": {
+    "shape": "bottle",
+    "color": "#6B4A2F",
+    "accent": "#F3EDE6"
+   },
+   "attributes": {
+    "weight": "500 ml",
+    "packSize": "1 bottle",
+    "ingredients": "Arabica coffee, water",
+    "origin": "Colombia",
+    "shelfLife": "3 months",
+    "dietary": "Vegan"
+   },
+   "variants": [
+    {
+     "id": "cb-o",
+     "label": "Original",
+     "options": {
+      "flavour": "Original"
+     },
+     "price": 8.5,
+     "salePrice": 7.2,
+     "sku": "GRO-BEV-CB-O",
+     "stock": {
+      "store-01": 18,
+      "store-02": 9
+     }
+    },
+    {
+     "id": "cb-v",
+     "label": "Vanilla",
+     "options": {
+      "flavour": "Vanilla"
+     },
+     "price": 8.9,
+     "salePrice": 7.6,
+     "sku": "GRO-BEV-CB-V",
+     "stock": {
+      "store-01": 7,
+      "store-02": 0
+     }
+    }
+   ],
+   "position": 3,
+   "sellerId": "fresh-grocers"
+  },
+  {
+   "id": "greek-yogurt",
+   "name": "Greek Yogurt",
+   "slug": "greek-yogurt",
+   "categoryId": "grocery-dairy",
+   "brandId": "freshfields",
+   "description": "Strained thick with no added thickeners. High protein and tart enough to work in savoury cooking.",
+   "price": 3.4,
+   "salePrice": 2.99,
+   "tax": 0,
+   "sku": "GRO-DRY-GY",
+   "barcode": "8901234500059",
+   "unit": "tub",
+   "moq": 1,
+   "maxQty": 12,
+   "rating": 4.5,
+   "reviews": 388,
+   "sold": 2410,
+   "createdAt": "2026-07-05",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "near",
+    "popular"
+   ],
+   "art": {
+    "shape": "carton",
+    "color": "#4A6B8A",
+    "accent": "#EEF4FA"
+   },
+   "attributes": {
+    "weight": "400 g",
+    "packSize": "1 tub",
+    "ingredients": "Pasteurised milk, live cultures",
+    "origin": "Local dairy",
+    "shelfLife": "14 days",
+    "dietary": "Veg"
+   },
+   "stock": {
+    "store-01": 26,
+    "store-02": 3
+   },
+   "position": 4,
+   "sellerId": "fresh-grocers"
+  },
+  {
+   "id": "paracetamol-500",
+   "name": "Paracetamol 500mg",
+   "slug": "paracetamol-500mg",
+   "categoryId": "health-medicines",
+   "brandId": "gsk",
+   "description": "A widely used pain reliever and fever reducer, suitable for mild to moderate pain and general discomfort.",
+   "price": 3,
+   "salePrice": 2.5,
+   "tax": 0,
+   "sku": "MED-PCM-500",
+   "barcode": "8901234500066",
+   "unit": "strip",
+   "moq": 1,
+   "maxQty": 5,
+   "rating": 4.6,
+   "reviews": 890,
+   "sold": 6120,
+   "createdAt": "2025-11-02",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "bestseller",
+    "popular"
+   ],
+   "art": {
+    "shape": "medbox",
+    "color": "#2B6CB0",
+    "accent": "#E7F0FC"
+   },
+   "attributes": {
+    "genericName": "Paracetamol",
+    "strength": "500 mg",
+    "dosageForm": "Tablet",
+    "manufacturer": "GSK",
+    "prescription": "No",
+    "storage": "Below 25°C, dry place"
+   },
+   "composition": "Each tablet contains Paracetamol IP 500mg. Excipients q.s.",
+   "usage": "Take 1 tablet every 4-6 hours as needed. Do not exceed 8 tablets in 24 hours.",
+   "sideEffects": "Generally well tolerated. Rare: nausea, rash. Discontinue and consult a doctor if symptoms persist.",
+   "stock": {
+    "store-01": 58,
+    "store-02": 40
+   },
+   "batches": [
+    {
+     "batch": "PCM-A21",
+     "expiryInDays": 120,
+     "qty": 18,
+     "cost": 1.6
+    },
+    {
+     "batch": "PCM-B04",
+     "expiryInDays": 400,
+     "qty": 40,
+     "cost": 1.7
+    }
+   ],
+   "position": 5,
+   "sellerId": "vyra-retail"
+  },
+  {
+   "id": "cetirizine-10",
+   "name": "Cetirizine 10mg Tablet",
+   "slug": "cetirizine-10mg",
+   "categoryId": "health-medicines",
+   "brandId": "cipla",
+   "description": "An antihistamine used to relieve symptoms of allergy such as sneezing, runny nose, itchy eyes and skin rashes.",
+   "price": 32,
+   "salePrice": 25.5,
+   "tax": 0,
+   "sku": "MED-CTZ-10",
+   "barcode": "8901234500073",
+   "unit": "strip",
+   "moq": 1,
+   "maxQty": 5,
+   "rating": 4.8,
+   "reviews": 1245,
+   "sold": 4300,
+   "createdAt": "2025-12-14",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "popular"
+   ],
+   "art": {
+    "shape": "medbox",
+    "color": "#0FAF8F",
+    "accent": "#E9FAF6"
+   },
+   "attributes": {
+    "genericName": "Cetirizine Hydrochloride",
+    "strength": "10 mg",
+    "dosageForm": "Tablet",
+    "manufacturer": "Cipla",
+    "prescription": "No",
+    "storage": "Below 25°C"
+   },
+   "composition": "Each tablet contains Cetirizine Hydrochloride IP 10mg. Excipients q.s.",
+   "usage": "Take 1 tablet daily, preferably in the evening, or as directed by your physician.",
+   "sideEffects": "May cause mild drowsiness, dry mouth or headache in some users.",
+   "stock": {
+    "store-01": 34,
+    "store-02": 21
+   },
+   "batches": [
+    {
+     "batch": "CTZ-77",
+     "expiryInDays": 60,
+     "qty": 12,
+     "cost": 14
+    },
+    {
+     "batch": "CTZ-81",
+     "expiryInDays": 520,
+     "qty": 22,
+     "cost": 15
+    }
+   ],
+   "position": 6,
+   "sellerId": "vyra-retail"
+  },
+  {
+   "id": "amoxicillin-500",
+   "name": "Amoxicillin 500mg",
+   "slug": "amoxicillin-500mg",
+   "categoryId": "health-medicines",
+   "brandId": "sunpharma",
+   "description": "A penicillin-type antibiotic used to treat a wide range of bacterial infections. Dispensed only against a valid prescription.",
+   "price": 21,
+   "salePrice": 18.9,
+   "tax": 0,
+   "sku": "MED-AMX-500",
+   "barcode": "8901234500080",
+   "unit": "strip",
+   "moq": 1,
+   "maxQty": 2,
+   "rating": 4.5,
+   "reviews": 512,
+   "sold": 980,
+   "createdAt": "2026-01-09",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [],
+   "flags": {
+    "prescriptionRequired": true
+   },
+   "art": {
+    "shape": "medbox",
+    "color": "#D9524A",
+    "accent": "#FCEAEC"
+   },
+   "attributes": {
+    "genericName": "Amoxicillin Trihydrate",
+    "strength": "500 mg",
+    "dosageForm": "Capsule",
+    "manufacturer": "Sun Pharma",
+    "prescription": "Yes",
+    "storage": "Below 25°C"
+   },
+   "composition": "Each capsule contains Amoxicillin Trihydrate IP equivalent to Amoxicillin 500mg.",
+   "usage": "Take as prescribed. Complete the full course even if symptoms improve.",
+   "sideEffects": "May cause nausea, diarrhea or allergic reaction. Seek help if rash or swelling occurs.",
+   "stock": {
+    "store-01": 16,
+    "store-02": 9
+   },
+   "batches": [
+    {
+     "batch": "AMX-12",
+     "expiryInDays": 25,
+     "qty": 4,
+     "cost": 11
+    },
+    {
+     "batch": "AMX-19",
+     "expiryInDays": 300,
+     "qty": 12,
+     "cost": 12
+    }
+   ],
+   "position": 7,
+   "sellerId": "vyra-retail"
+  },
+  {
+   "id": "vitamin-c-1000",
+   "name": "Vitamin C 1000mg",
+   "slug": "vitamin-c-1000mg",
+   "categoryId": "health-vitamins",
+   "brandId": "healthvit",
+   "description": "A daily immunity supplement that supports antioxidant defence and general wellbeing.",
+   "price": 15,
+   "salePrice": 12,
+   "tax": 0,
+   "sku": "MED-VTC-1K",
+   "barcode": "8901234500097",
+   "unit": "bottle",
+   "moq": 1,
+   "maxQty": 6,
+   "rating": 4.7,
+   "reviews": 634,
+   "sold": 3120,
+   "createdAt": "2026-03-18",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "bestseller",
+    "flash"
+   ],
+   "art": {
+    "shape": "bottle",
+    "color": "#E0A427",
+    "accent": "#FCF3E3"
+   },
+   "attributes": {
+    "genericName": "Ascorbic Acid",
+    "strength": "1000 mg",
+    "dosageForm": "Tablet",
+    "manufacturer": "HealthVit",
+    "prescription": "No",
+    "storage": "Cool, dry place"
+   },
+   "composition": "Each tablet contains Vitamin C (Ascorbic Acid) 1000mg.",
+   "usage": "Take 1 tablet daily after a meal, or as directed by your physician.",
+   "sideEffects": "Generally well tolerated. High doses may cause mild stomach upset.",
+   "variants": [
+    {
+     "id": "vc30",
+     "label": "30 Tablets",
+     "options": {
+      "packSize": "30"
+     },
+     "price": 15,
+     "salePrice": 12,
+     "sku": "MED-VTC-30",
+     "stock": {
+      "store-01": 28,
+      "store-02": 15
+     }
+    },
+    {
+     "id": "vc60",
+     "label": "60 Tablets",
+     "options": {
+      "packSize": "60"
+     },
+     "price": 26,
+     "salePrice": 20.5,
+     "sku": "MED-VTC-60",
+     "stock": {
+      "store-01": 11,
+      "store-02": 2
+     }
+    }
+   ],
+   "batches": [
+    {
+     "batch": "VTC-33",
+     "expiryInDays": 210,
+     "qty": 39,
+     "cost": 8
+    }
+   ],
+   "position": 8,
+   "sellerId": "vyra-retail"
+  },
+  {
+   "id": "digital-thermometer",
+   "name": "Digital Thermometer",
+   "slug": "digital-thermometer",
+   "categoryId": "health-devices",
+   "brandId": "drtrust",
+   "description": "Fast, accurate digital thermometer for at-home temperature monitoring for the whole family.",
+   "price": 12.99,
+   "salePrice": 9.99,
+   "tax": 0,
+   "sku": "MED-THM-01",
+   "barcode": "8901234500103",
+   "unit": "piece",
+   "moq": 1,
+   "maxQty": 3,
+   "rating": 4.4,
+   "reviews": 322,
+   "sold": 870,
+   "createdAt": "2026-05-27",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "popular"
+   ],
+   "art": {
+    "shape": "device",
+    "color": "#7C5CD6",
+    "accent": "#F1ECFC"
+   },
+   "attributes": {
+    "genericName": "—",
+    "strength": "—",
+    "dosageForm": "Device",
+    "manufacturer": "Dr. Trust",
+    "prescription": "No",
+    "storage": "Room temperature"
+   },
+   "composition": "Medical-grade digital thermometer with LCD display.",
+   "usage": "Place under tongue or arm for 10 seconds until the reading beeps.",
+   "sideEffects": "Not applicable — device product.",
+   "stock": {
+    "store-01": 14,
+    "store-02": 6
+   },
+   "position": 9,
+   "sellerId": "vyra-retail"
+  },
+  {
+   "id": "first-aid-kit",
+   "name": "Home First Aid Kit",
+   "slug": "home-first-aid-kit",
+   "categoryId": "health-firstaid",
+   "brandId": "drtrust",
+   "description": "A 42-piece kit in a soft zip case: dressings, antiseptic wipes, tape and a foil blanket.",
+   "price": 24,
+   "salePrice": 19.5,
+   "tax": 0,
+   "sku": "MED-FAK-42",
+   "barcode": "8901234500110",
+   "unit": "kit",
+   "moq": 1,
+   "maxQty": 3,
+   "rating": 4.6,
+   "reviews": 194,
+   "sold": 410,
+   "createdAt": "2026-08-02",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "new"
+   ],
+   "art": {
+    "shape": "medbox",
+    "color": "#D9524A",
+    "accent": "#FCEAEC"
+   },
+   "attributes": {
+    "genericName": "—",
+    "strength": "42 pieces",
+    "dosageForm": "Device",
+    "manufacturer": "Dr. Trust",
+    "prescription": "No",
+    "storage": "Room temperature"
+   },
+   "stock": {
+    "store-01": 9,
+    "store-02": 4
+   },
+   "batches": [
+    {
+     "batch": "FAK-08",
+     "expiryInDays": 700,
+     "qty": 13,
+     "cost": 13
+    }
+   ],
+   "position": 10,
+   "sellerId": "vyra-retail"
+  },
+  {
+   "id": "panadol-500",
+   "name": "Panadol 500mg",
+   "slug": "panadol-500mg",
+   "categoryId": "health-medicines",
+   "brandId": "gsk",
+   "description": "Fast-acting paracetamol tablets for headache, fever and general pain relief.",
+   "price": 3.4,
+   "salePrice": 2.9,
+   "tax": 0,
+   "sku": "MED-PAN-500",
+   "barcode": "8901234500141X",
+   "unit": "strip",
+   "moq": 1,
+   "maxQty": 5,
+   "rating": 4.5,
+   "reviews": 402,
+   "sold": 2210,
+   "createdAt": "2026-03-05",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "popular"
+   ],
+   "art": {
+    "shape": "medbox",
+    "color": "#2B6CB0",
+    "accent": "#E7F0FC"
+   },
+   "attributes": {
+    "genericName": "Paracetamol",
+    "strength": "500 mg",
+    "dosageForm": "Tablet",
+    "manufacturer": "GSK",
+    "prescription": "No",
+    "storage": "Below 25°C, dry place"
+   },
+   "composition": "Each tablet contains Paracetamol BP 500mg.",
+   "usage": "Take 1-2 tablets every 4-6 hours as needed. Do not exceed 8 tablets in 24 hours.",
+   "sideEffects": "Generally well tolerated. Rare: nausea, rash.",
+   "stock": {
+    "store-01": 40,
+    "store-02": 22
+   },
+   "batches": [
+    {
+     "batch": "PAN-11",
+     "expiryInDays": 180,
+     "qty": 40,
+     "cost": 1.8
+    },
+    {
+     "batch": "PAN-14",
+     "expiryInDays": 410,
+     "qty": 22,
+     "cost": 1.9
+    }
+   ],
+   "position": 11,
+   "sellerId": "vyra-retail"
+  },
+  {
+   "id": "paracip-650",
+   "name": "Paracip 650",
+   "slug": "paracip-650",
+   "categoryId": "health-medicines",
+   "brandId": "cipla",
+   "description": "Higher-strength paracetamol for moderate pain and fever where 500mg isn't enough.",
+   "price": 4.1,
+   "salePrice": 3.5,
+   "tax": 0,
+   "sku": "MED-PCP-650",
+   "barcode": "8901234500142X",
+   "unit": "strip",
+   "moq": 1,
+   "maxQty": 5,
+   "rating": 4.4,
+   "reviews": 210,
+   "sold": 1180,
+   "createdAt": "2026-04-11",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [],
+   "art": {
+    "shape": "medbox",
+    "color": "#0FAF8F",
+    "accent": "#E9FAF6"
+   },
+   "attributes": {
+    "genericName": "Paracetamol",
+    "strength": "650 mg",
+    "dosageForm": "Tablet",
+    "manufacturer": "Cipla",
+    "prescription": "No",
+    "storage": "Below 25°C"
+   },
+   "composition": "Each tablet contains Paracetamol IP 650mg.",
+   "usage": "Take 1 tablet every 6 hours as needed. Do not exceed 4 tablets in 24 hours.",
+   "sideEffects": "Generally well tolerated. Rare: nausea, allergic reaction.",
+   "stock": {
+    "store-01": 18,
+    "store-02": 6
+   },
+   "batches": [
+    {
+     "batch": "PCP-02",
+     "expiryInDays": 45,
+     "qty": 8,
+     "cost": 2.2
+    },
+    {
+     "batch": "PCP-06",
+     "expiryInDays": 300,
+     "qty": 16,
+     "cost": 2.3
+    }
+   ],
+   "position": 12,
+   "sellerId": "vyra-retail"
+  },
+  {
+   "id": "pantoprazole-40",
+   "name": "Pantoprazole 40mg",
+   "slug": "pantoprazole-40mg",
+   "categoryId": "health-medicines",
+   "brandId": "sunpharma",
+   "description": "A proton-pump inhibitor used to reduce stomach acid for acid reflux and ulcers.",
+   "price": 6.2,
+   "salePrice": 5.1,
+   "tax": 0,
+   "sku": "MED-PPZ-40",
+   "barcode": "8901234500143X",
+   "unit": "strip",
+   "moq": 1,
+   "maxQty": 4,
+   "rating": 4.6,
+   "reviews": 355,
+   "sold": 1490,
+   "createdAt": "2026-02-19",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [],
+   "art": {
+    "shape": "medbox",
+    "color": "#D9524A",
+    "accent": "#FCEAEC"
+   },
+   "attributes": {
+    "genericName": "Pantoprazole Sodium",
+    "strength": "40 mg",
+    "dosageForm": "Tablet",
+    "manufacturer": "Sun Pharma",
+    "prescription": "No",
+    "storage": "Below 25°C"
+   },
+   "composition": "Each enteric-coated tablet contains Pantoprazole Sodium equivalent to Pantoprazole 40mg.",
+   "usage": "Take 1 tablet daily before breakfast, or as directed by your physician.",
+   "sideEffects": "May cause headache, diarrhea or stomach pain in some users.",
+   "stock": {
+    "store-01": 25,
+    "store-02": 11
+   },
+   "batches": [
+    {
+     "batch": "PPZ-19",
+     "expiryInDays": 250,
+     "qty": 36,
+     "cost": 3.6
+    }
+   ],
+   "position": 13,
+   "sellerId": "vyra-retail"
+  },
+  {
+   "id": "levocetirizine-5",
+   "name": "Levocetirizine 5mg",
+   "slug": "levocetirizine-5mg",
+   "categoryId": "health-medicines",
+   "brandId": "cipla",
+   "description": "A once-daily antihistamine for allergy symptoms with less drowsiness than older options.",
+   "price": 4.8,
+   "salePrice": 3.9,
+   "tax": 0,
+   "sku": "MED-LVC-5",
+   "barcode": "8901234500144X",
+   "unit": "strip",
+   "moq": 1,
+   "maxQty": 5,
+   "rating": 4.7,
+   "reviews": 288,
+   "sold": 990,
+   "createdAt": "2026-05-30",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [],
+   "art": {
+    "shape": "medbox",
+    "color": "#0FAF8F",
+    "accent": "#E9FAF6"
+   },
+   "attributes": {
+    "genericName": "Levocetirizine Dihydrochloride",
+    "strength": "5 mg",
+    "dosageForm": "Tablet",
+    "manufacturer": "Cipla",
+    "prescription": "No",
+    "storage": "Below 25°C"
+   },
+   "composition": "Each tablet contains Levocetirizine Dihydrochloride 5mg.",
+   "usage": "Take 1 tablet daily in the evening, or as directed.",
+   "sideEffects": "May cause mild drowsiness or dry mouth.",
+   "stock": {
+    "store-01": 20,
+    "store-02": 9
+   },
+   "batches": [
+    {
+     "batch": "LVC-03",
+     "expiryInDays": 320,
+     "qty": 29,
+     "cost": 2.1
+    }
+   ],
+   "position": 14,
+   "sellerId": "vyra-retail"
+  },
+  {
+   "id": "liv-52",
+   "name": "Liv-52",
+   "slug": "liv-52",
+   "categoryId": "health-vitamins",
+   "brandId": "himalaya",
+   "description": "A herbal liver-support formula used as a general hepatoprotective supplement.",
+   "price": 8.9,
+   "salePrice": 7.5,
+   "tax": 0,
+   "sku": "MED-LIV-52",
+   "barcode": "8901234500145X",
+   "unit": "bottle",
+   "moq": 1,
+   "maxQty": 4,
+   "rating": 4.5,
+   "reviews": 512,
+   "sold": 1740,
+   "createdAt": "2026-01-25",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "popular"
+   ],
+   "art": {
+    "shape": "bottle",
+    "color": "#2F7A4D",
+    "accent": "#E9F7EE"
+   },
+   "attributes": {
+    "genericName": "Herbal formulation",
+    "strength": "60 tablets",
+    "dosageForm": "Tablet",
+    "manufacturer": "Himalaya Wellness",
+    "prescription": "No",
+    "storage": "Cool, dry place"
+   },
+   "composition": "A proprietary blend of Himsra, Kasani, Kakamachi and other hepatoprotective herbs.",
+   "usage": "Take 2 tablets twice daily, or as directed by your physician.",
+   "sideEffects": "Generally well tolerated as a herbal supplement.",
+   "stock": {
+    "store-01": 22,
+    "store-02": 14
+   },
+   "batches": [
+    {
+     "batch": "LIV-27",
+     "expiryInDays": 500,
+     "qty": 36,
+     "cost": 4.4
+    }
+   ],
+   "position": 15,
+   "sellerId": "vyra-retail"
+  },
+  {
+   "id": "loperamide-2",
+   "name": "Loperamide 2mg",
+   "slug": "loperamide-2mg",
+   "categoryId": "health-medicines",
+   "brandId": "gsk",
+   "description": "Used for the short-term relief of acute diarrhoea in adults.",
+   "price": 3.9,
+   "salePrice": 3.2,
+   "tax": 0,
+   "sku": "MED-LOP-2",
+   "barcode": "8901234500146X",
+   "unit": "strip",
+   "moq": 1,
+   "maxQty": 3,
+   "rating": 4.3,
+   "reviews": 176,
+   "sold": 640,
+   "createdAt": "2026-06-14",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [],
+   "art": {
+    "shape": "medbox",
+    "color": "#2B6CB0",
+    "accent": "#E7F0FC"
+   },
+   "attributes": {
+    "genericName": "Loperamide Hydrochloride",
+    "strength": "2 mg",
+    "dosageForm": "Capsule",
+    "manufacturer": "GSK",
+    "prescription": "No",
+    "storage": "Below 25°C"
+   },
+   "composition": "Each capsule contains Loperamide Hydrochloride 2mg.",
+   "usage": "Take 2 capsules initially, then 1 after each loose stool. Do not exceed 8 in 24 hours.",
+   "sideEffects": "May cause constipation, dizziness or dry mouth.",
+   "stock": {
+    "store-01": 15,
+    "store-02": 5
+   },
+   "batches": [
+    {
+     "batch": "LOP-09",
+     "expiryInDays": 15,
+     "qty": 5,
+     "cost": 1.9
+    },
+    {
+     "batch": "LOP-12",
+     "expiryInDays": 280,
+     "qty": 12,
+     "cost": 2
+    }
+   ],
+   "position": 16,
+   "sellerId": "vyra-retail"
+  },
+  {
+   "id": "body-wash",
+   "name": "Nourishing Body Wash",
+   "slug": "nourishing-body-wash",
+   "categoryId": "personal-bath",
+   "brandId": "auralux",
+   "description": "A sulphate-free gel that foams generously without stripping skin. Rinses clean with a light citrus trail.",
+   "price": 9,
+   "salePrice": 6.75,
+   "tax": 0,
+   "sku": "PER-BW-500",
+   "barcode": "8901234500127",
+   "unit": "bottle",
+   "moq": 1,
+   "maxQty": 6,
+   "rating": 4.5,
+   "reviews": 611,
+   "sold": 2230,
+   "createdAt": "2026-04-14",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "flash",
+    "popular"
+   ],
+   "art": {
+    "shape": "bottle",
+    "color": "#1E88C7",
+    "accent": "#E7F2FC"
+   },
+   "attributes": {
+    "volume": "500 ml",
+    "skinType": "All",
+    "fragrance": "Citrus & cedar",
+    "keyIngredients": "Glycerin, aloe vera, vitamin E"
+   },
+   "variants": [
+    {
+     "id": "bw-c",
+     "label": "Citrus",
+     "options": {
+      "fragrance": "Citrus"
+     },
+     "price": 9,
+     "salePrice": 6.75,
+     "sku": "PER-BW-C",
+     "stock": {
+      "store-01": 22,
+      "store-02": 10
+     }
+    },
+    {
+     "id": "bw-l",
+     "label": "Lavender",
+     "options": {
+      "fragrance": "Lavender"
+     },
+     "price": 9,
+     "salePrice": 6.75,
+     "sku": "PER-BW-L",
+     "stock": {
+      "store-01": 0,
+      "store-02": 5
+     }
+    }
+   ],
+   "position": 17,
+   "sellerId": "auralux-beauty"
+  },
+  {
+   "id": "toothpaste-gel",
+   "name": "Enamel Repair Toothpaste",
+   "slug": "enamel-repair-toothpaste",
+   "categoryId": "personal-oral",
+   "brandId": "auralux",
+   "description": "Fluoride gel with hydroxyapatite that helps remineralise enamel and calm sensitivity over regular use.",
+   "price": 5.5,
+   "salePrice": 4.4,
+   "tax": 0,
+   "sku": "PER-TP-100",
+   "barcode": "8901234500134",
+   "unit": "tube",
+   "moq": 1,
+   "maxQty": 8,
+   "rating": 4.7,
+   "reviews": 903,
+   "sold": 3410,
+   "createdAt": "2026-02-28",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "bestseller",
+    "near"
+   ],
+   "art": {
+    "shape": "tube",
+    "color": "#0FAF8F",
+    "accent": "#E9FAF6"
+   },
+   "attributes": {
+    "volume": "100 g",
+    "skinType": "Sensitive",
+    "fragrance": "Mint",
+    "keyIngredients": "Fluoride, hydroxyapatite"
+   },
+   "stock": {
+    "store-01": 44,
+    "store-02": 30
+   },
+   "position": 18,
+   "sellerId": "auralux-beauty"
+  },
+  {
+   "id": "vitamin-c-serum",
+   "name": "Vitamin C Glow Serum",
+   "slug": "vitamin-c-glow-serum",
+   "categoryId": "beauty-skin",
+   "brandId": "auralux",
+   "description": "15% stabilised vitamin C with ferulic acid. Lightweight, absorbs fast and layers under sunscreen without pilling.",
+   "price": 34,
+   "salePrice": 25.5,
+   "tax": 0,
+   "sku": "BTY-SRM-30",
+   "barcode": "8901234500141",
+   "unit": "bottle",
+   "moq": 1,
+   "maxQty": 4,
+   "rating": 4.8,
+   "reviews": 1502,
+   "sold": 4820,
+   "createdAt": "2026-07-22",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "new",
+    "bestseller",
+    "flash"
+   ],
+   "art": {
+    "shape": "cosmetic",
+    "color": "#D65D46",
+    "accent": "#FDECE6"
+   },
+   "attributes": {
+    "shade": "—",
+    "finish": "Dewy",
+    "volume": "30 ml",
+    "skinType": "All",
+    "crueltyFree": "Yes"
+   },
+   "stock": {
+    "store-01": 19,
+    "store-02": 8
+   },
+   "position": 19,
+   "sellerId": "auralux-beauty"
+  },
+  {
+   "id": "matte-lipstick",
+   "name": "Velvet Matte Lipstick",
+   "slug": "velvet-matte-lipstick",
+   "categoryId": "beauty-makeup",
+   "brandId": "auralux",
+   "description": "A cushiony matte that wears for hours without flaking. Full coverage in one pass, buildable to two.",
+   "price": 18,
+   "salePrice": 14.4,
+   "tax": 0,
+   "sku": "BTY-LIP-01",
+   "barcode": "8901234500158",
+   "unit": "piece",
+   "moq": 1,
+   "maxQty": 6,
+   "rating": 4.6,
+   "reviews": 764,
+   "sold": 2110,
+   "createdAt": "2026-06-03",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "popular"
+   ],
+   "art": {
+    "shape": "cosmetic",
+    "color": "#B03050",
+    "accent": "#FCEAEC"
+   },
+   "attributes": {
+    "shade": "Rosewood",
+    "finish": "Matte",
+    "volume": "3.8 g",
+    "skinType": "All",
+    "crueltyFree": "Yes"
+   },
+   "variants": [
+    {
+     "id": "lip-rw",
+     "label": "Rosewood",
+     "options": {
+      "shade": "Rosewood",
+      "color": "#B03050"
+     },
+     "price": 18,
+     "salePrice": 14.4,
+     "sku": "BTY-LIP-RW",
+     "stock": {
+      "store-01": 12,
+      "store-02": 6
+     }
+    },
+    {
+     "id": "lip-tr",
+     "label": "Terracotta",
+     "options": {
+      "shade": "Terracotta",
+      "color": "#C4643C"
+     },
+     "price": 18,
+     "salePrice": 14.4,
+     "sku": "BTY-LIP-TR",
+     "stock": {
+      "store-01": 5,
+      "store-02": 0
+     }
+    },
+    {
+     "id": "lip-pl",
+     "label": "Plum",
+     "options": {
+      "shade": "Plum",
+      "color": "#6E2B4E"
+     },
+     "price": 19,
+     "salePrice": 15.2,
+     "sku": "BTY-LIP-PL",
+     "stock": {
+      "store-01": 0,
+      "store-02": 0
+     }
+    }
+   ],
+   "position": 20,
+   "sellerId": "auralux-beauty"
+  },
+  {
+   "id": "argan-hair-oil",
+   "name": "Argan Hair Oil",
+   "slug": "argan-hair-oil",
+   "categoryId": "beauty-hair",
+   "brandId": "auralux",
+   "description": "A dry oil that tames frizz without weighing hair down. Two drops on damp ends is plenty.",
+   "price": 16,
+   "salePrice": 12.8,
+   "tax": 0,
+   "sku": "BTY-HRO-100",
+   "barcode": "8901234500165",
+   "unit": "bottle",
+   "moq": 1,
+   "maxQty": 5,
+   "rating": 4.4,
+   "reviews": 445,
+   "sold": 1290,
+   "createdAt": "2026-05-11",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "near"
+   ],
+   "art": {
+    "shape": "bottle",
+    "color": "#7C5CD6",
+    "accent": "#F1ECFC"
+   },
+   "attributes": {
+    "shade": "—",
+    "finish": "Satin",
+    "volume": "100 ml",
+    "skinType": "All",
+    "crueltyFree": "Yes"
+   },
+   "stock": {
+    "store-01": 17,
+    "store-02": 11
+   },
+   "position": 21,
+   "sellerId": "auralux-beauty"
+  },
+  {
+   "id": "diaper-rash-cream",
+   "name": "Baby Diaper Rash Cream",
+   "slug": "baby-diaper-rash-cream",
+   "categoryId": "baby",
+   "brandId": "mothercare",
+   "description": "A gentle barrier cream that soothes and protects your baby's skin from diaper rash.",
+   "price": 7.5,
+   "salePrice": 6.5,
+   "tax": 0,
+   "sku": "BBY-DRC-50",
+   "barcode": "8901234500172",
+   "unit": "tube",
+   "moq": 1,
+   "maxQty": 6,
+   "rating": 4.9,
+   "reviews": 1021,
+   "sold": 3980,
+   "createdAt": "2026-01-20",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "bestseller",
+    "popular"
+   ],
+   "art": {
+    "shape": "tube",
+    "color": "#7C5CD6",
+    "accent": "#F1ECFC"
+   },
+   "attributes": {
+    "ageGroup": "0-6 months",
+    "volume": "50 g",
+    "dermatologistTested": "Yes"
+   },
+   "stock": {
+    "store-01": 25,
+    "store-02": 14
+   },
+   "position": 22,
+   "sellerId": "vyra-retail"
+  },
+  {
+   "id": "baby-wipes",
+   "name": "Fragrance-Free Baby Wipes",
+   "slug": "fragrance-free-baby-wipes",
+   "categoryId": "baby",
+   "brandId": "mothercare",
+   "description": "99% water wipes with a soft plant-fibre cloth. Thick enough that one usually does the job.",
+   "price": 6,
+   "salePrice": 4.8,
+   "tax": 0,
+   "sku": "BBY-WIP-72",
+   "barcode": "8901234500189",
+   "unit": "pack",
+   "moq": 1,
+   "maxQty": 12,
+   "rating": 4.7,
+   "reviews": 1888,
+   "sold": 7120,
+   "createdAt": "2026-03-30",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "flash",
+    "near"
+   ],
+   "art": {
+    "shape": "box",
+    "color": "#5C46B0",
+    "accent": "#EFEDF7"
+   },
+   "attributes": {
+    "ageGroup": "0-6 months",
+    "volume": "72 wipes",
+    "dermatologistTested": "Yes"
+   },
+   "variants": [
+    {
+     "id": "bw-1",
+     "label": "1 pack",
+     "options": {
+      "packSize": "72"
+     },
+     "price": 6,
+     "salePrice": 4.8,
+     "sku": "BBY-WIP-1",
+     "stock": {
+      "store-01": 60,
+      "store-02": 32
+     }
+    },
+    {
+     "id": "bw-3",
+     "label": "3 packs",
+     "options": {
+      "packSize": "216"
+     },
+     "price": 16.5,
+     "salePrice": 12.9,
+     "sku": "BBY-WIP-3",
+     "stock": {
+      "store-01": 20,
+      "store-02": 6
+     }
+    }
+   ],
+   "position": 23,
+   "sellerId": "vyra-retail"
+  },
+  {
+   "id": "floor-cleaner",
+   "name": "Citrus Floor Cleaner",
+   "slug": "citrus-floor-cleaner",
+   "categoryId": "household",
+   "brandId": "homecraft",
+   "description": "A concentrated cleaner that cuts grease and dries without streaks. One cap per bucket.",
+   "price": 7.2,
+   "salePrice": 5.4,
+   "tax": 0,
+   "sku": "HOU-FLC-1L",
+   "barcode": "8901234500196",
+   "unit": "bottle",
+   "moq": 1,
+   "maxQty": 10,
+   "rating": 4.3,
+   "reviews": 521,
+   "sold": 2640,
+   "createdAt": "2026-02-08",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "flash"
+   ],
+   "art": {
+    "shape": "bottle",
+    "color": "#4A5F6B",
+    "accent": "#EFF3F5"
+   },
+   "attributes": {
+    "volume": "1 L",
+    "surface": "Tile, marble, vinyl",
+    "scent": "Citrus"
+   },
+   "stock": {
+    "store-01": 38,
+    "store-02": 22
+   },
+   "position": 24,
+   "sellerId": "homecraft-living"
+  },
+  {
+   "id": "laundry-detergent",
+   "name": "Laundry Detergent Pods",
+   "slug": "laundry-detergent-pods",
+   "categoryId": "household",
+   "brandId": "homecraft",
+   "description": "Triple-chamber pods that dissolve in cold water. No measuring, no residue on darks.",
+   "price": 18,
+   "salePrice": 14.4,
+   "tax": 0,
+   "sku": "HOU-LDP-40",
+   "barcode": "8901234500202",
+   "unit": "pack",
+   "moq": 1,
+   "maxQty": 6,
+   "rating": 4.6,
+   "reviews": 980,
+   "sold": 3210,
+   "createdAt": "2026-06-25",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "bestseller"
+   ],
+   "art": {
+    "shape": "box",
+    "color": "#2B6CB0",
+    "accent": "#E7F0FC"
+   },
+   "attributes": {
+    "volume": "40 pods",
+    "surface": "All fabrics",
+    "scent": "Fresh linen"
+   },
+   "stock": {
+    "store-01": 21,
+    "store-02": 5
+   },
+   "position": 25,
+   "sellerId": "homecraft-living"
+  },
+  {
+   "id": "steel-cookware",
+   "name": "Tri-Ply Frying Pan",
+   "slug": "tri-ply-frying-pan",
+   "categoryId": "home",
+   "brandId": "homecraft",
+   "description": "Steel-aluminium-steel construction that heats evenly and takes a proper sear. Oven safe to 250°C.",
+   "price": 62,
+   "salePrice": 46.5,
+   "tax": 0,
+   "sku": "HOM-PAN-26",
+   "barcode": "8901234500219",
+   "unit": "piece",
+   "moq": 1,
+   "maxQty": 3,
+   "rating": 4.7,
+   "reviews": 342,
+   "sold": 720,
+   "createdAt": "2026-07-14",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "new",
+    "flash"
+   ],
+   "art": {
+    "shape": "box",
+    "color": "#8A6A44",
+    "accent": "#F3EDE6"
+   },
+   "attributes": {
+    "material": "Stainless Steel",
+    "capacity": "26 cm",
+    "dishwasherSafe": "Yes",
+    "warranty": "5 years"
+   },
+   "variants": [
+    {
+     "id": "pan-24",
+     "label": "24 cm",
+     "options": {
+      "capacity": "24 cm"
+     },
+     "price": 54,
+     "salePrice": 40.5,
+     "sku": "HOM-PAN-24",
+     "stock": {
+      "store-01": 7,
+      "store-02": 3
+     }
+    },
+    {
+     "id": "pan-26",
+     "label": "26 cm",
+     "options": {
+      "capacity": "26 cm"
+     },
+     "price": 62,
+     "salePrice": 46.5,
+     "sku": "HOM-PAN-26",
+     "stock": {
+      "store-01": 4,
+      "store-02": 1
+     }
+    },
+    {
+     "id": "pan-30",
+     "label": "30 cm",
+     "options": {
+      "capacity": "30 cm"
+     },
+     "price": 74,
+     "salePrice": 58,
+     "sku": "HOM-PAN-30",
+     "stock": {
+      "store-01": 0,
+      "store-02": 2
+     }
+    }
+   ],
+   "position": 26,
+   "sellerId": "homecraft-living"
+  },
+  {
+   "id": "glass-containers",
+   "name": "Glass Storage Set",
+   "slug": "glass-storage-set",
+   "categoryId": "home",
+   "brandId": "homecraft",
+   "description": "Borosilicate boxes with leak-proof lids. Freezer to oven without cracking, and they stack flat.",
+   "price": 38,
+   "salePrice": 28.5,
+   "tax": 0,
+   "sku": "HOM-GLS-5P",
+   "barcode": "8901234500226",
+   "unit": "set",
+   "moq": 1,
+   "maxQty": 4,
+   "rating": 4.5,
+   "reviews": 268,
+   "sold": 540,
+   "createdAt": "2026-05-02",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "popular"
+   ],
+   "art": {
+    "shape": "box",
+    "color": "#4A6B8A",
+    "accent": "#EEF4FA"
+   },
+   "attributes": {
+    "material": "Glass",
+    "capacity": "5 pieces",
+    "dishwasherSafe": "Yes",
+    "warranty": "2 years"
+   },
+   "stock": {
+    "store-01": 12,
+    "store-02": 6
+   },
+   "position": 27,
+   "sellerId": "homecraft-living"
+  },
+  {
+   "id": "wireless-earbuds",
+   "name": "NovaBuds Pro",
+   "slug": "novabuds-pro",
+   "categoryId": "electronics",
+   "brandId": "novatech",
+   "description": "Active noise cancelling earbuds with 32 hours of total playback and a wireless charging case.",
+   "price": 129,
+   "salePrice": 96.75,
+   "tax": 0,
+   "sku": "ELE-EAR-PRO",
+   "barcode": "8901234500233",
+   "unit": "piece",
+   "moq": 1,
+   "maxQty": 2,
+   "rating": 4.6,
+   "reviews": 2140,
+   "sold": 3890,
+   "createdAt": "2026-08-12",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "new",
+    "bestseller",
+    "flash"
+   ],
+   "art": {
+    "shape": "device",
+    "color": "#1E5FA8",
+    "accent": "#E7F0FC"
+   },
+   "attributes": {
+    "ram": "—",
+    "storage": "—",
+    "color": "Midnight",
+    "warranty": "1 year",
+    "model": "NB-Pro-2",
+    "power": "32 h total"
+   },
+   "variants": [
+    {
+     "id": "nb-mid",
+     "label": "Midnight",
+     "options": {
+      "color": "Midnight"
+     },
+     "price": 129,
+     "salePrice": 96.75,
+     "sku": "ELE-EAR-MID",
+     "stock": {
+      "store-01": 9,
+      "store-02": 4
+     }
+    },
+    {
+     "id": "nb-ivy",
+     "label": "Ivory",
+     "options": {
+      "color": "Ivory"
+     },
+     "price": 129,
+     "salePrice": 99,
+     "sku": "ELE-EAR-IVY",
+     "stock": {
+      "store-01": 2,
+      "store-02": 0
+     }
+    }
+   ],
+   "position": 28,
+   "sellerId": "novatech-official"
+  },
+  {
+   "id": "smart-watch",
+   "name": "NovaFit Smart Watch",
+   "slug": "novafit-smart-watch",
+   "categoryId": "electronics",
+   "brandId": "novatech",
+   "description": "AMOLED display, SpO2 and sleep tracking, and a battery that comfortably clears a week.",
+   "price": 189,
+   "salePrice": 151.2,
+   "tax": 0,
+   "sku": "ELE-WCH-FIT",
+   "barcode": "8901234500240",
+   "unit": "piece",
+   "moq": 1,
+   "maxQty": 2,
+   "rating": 4.4,
+   "reviews": 1180,
+   "sold": 1620,
+   "createdAt": "2026-04-26",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "popular"
+   ],
+   "art": {
+    "shape": "device",
+    "color": "#243B53",
+    "accent": "#E7F0FC"
+   },
+   "attributes": {
+    "ram": "1 GB",
+    "storage": "16 GB",
+    "color": "Graphite",
+    "warranty": "2 years",
+    "model": "NF-W3",
+    "power": "9 days"
+   },
+   "variants": [
+    {
+     "id": "nf-16",
+     "label": "16 GB / Graphite",
+     "options": {
+      "storage": "16 GB",
+      "color": "Graphite"
+     },
+     "price": 189,
+     "salePrice": 151.2,
+     "sku": "ELE-WCH-16G",
+     "stock": {
+      "store-01": 6,
+      "store-02": 2
+     }
+    },
+    {
+     "id": "nf-32",
+     "label": "32 GB / Silver",
+     "options": {
+      "storage": "32 GB",
+      "color": "Silver"
+     },
+     "price": 219,
+     "salePrice": 179,
+     "sku": "ELE-WCH-32S",
+     "stock": {
+      "store-01": 3,
+      "store-02": 0
+     }
+    }
+   ],
+   "position": 29,
+   "sellerId": "novatech-official"
+  },
+  {
+   "id": "power-bank",
+   "name": "20,000mAh Power Bank",
+   "slug": "power-bank-20000",
+   "categoryId": "electronics",
+   "brandId": "novatech",
+   "description": "65W USB-C output that can charge a laptop, with pass-through so you can charge it while it charges you.",
+   "price": 59,
+   "salePrice": 44.25,
+   "tax": 0,
+   "sku": "ELE-PWR-20K",
+   "barcode": "8901234500257",
+   "unit": "piece",
+   "moq": 1,
+   "maxQty": 3,
+   "rating": 4.5,
+   "reviews": 690,
+   "sold": 1450,
+   "createdAt": "2026-03-08",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "flash",
+    "near"
+   ],
+   "art": {
+    "shape": "device",
+    "color": "#4A5F6B",
+    "accent": "#EFF3F5"
+   },
+   "attributes": {
+    "ram": "—",
+    "storage": "20,000 mAh",
+    "color": "Black",
+    "warranty": "18 months",
+    "model": "NP-20K",
+    "power": "65 W"
+   },
+   "stock": {
+    "store-01": 15,
+    "store-02": 7
+   },
+   "position": 30,
+   "sellerId": "novatech-official"
+  },
+  {
+   "id": "dotted-notebook",
+   "name": "Dotted Hardcover Notebook",
+   "slug": "dotted-hardcover-notebook",
+   "categoryId": "stationery",
+   "brandId": "inkwell",
+   "description": "120gsm paper that takes fountain ink without ghosting, with a lay-flat binding.",
+   "price": 14,
+   "salePrice": 11.2,
+   "tax": 0,
+   "sku": "STA-NBK-A5",
+   "barcode": "8901234500264",
+   "unit": "piece",
+   "moq": 1,
+   "maxQty": 10,
+   "rating": 4.8,
+   "reviews": 522,
+   "sold": 1930,
+   "createdAt": "2026-06-09",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "bestseller"
+   ],
+   "art": {
+    "shape": "box",
+    "color": "#2B6CB0",
+    "accent": "#E7F0FC"
+   },
+   "attributes": {
+    "pageCount": "192",
+    "ruling": "Dotted",
+    "size": "A5",
+    "material": "Hardcover, 120gsm"
+   },
+   "variants": [
+    {
+     "id": "nb-a5",
+     "label": "A5",
+     "options": {
+      "size": "A5"
+     },
+     "price": 14,
+     "salePrice": 11.2,
+     "sku": "STA-NBK-A5",
+     "stock": {
+      "store-01": 33,
+      "store-02": 18
+     }
+    },
+    {
+     "id": "nb-b5",
+     "label": "B5",
+     "options": {
+      "size": "B5"
+     },
+     "price": 17,
+     "salePrice": 13.6,
+     "sku": "STA-NBK-B5",
+     "stock": {
+      "store-01": 14,
+      "store-02": 0
+     }
+    }
+   ],
+   "position": 31,
+   "sellerId": "inkwell-stationery"
+  },
+  {
+   "id": "gel-pen-set",
+   "name": "Gel Pen Set",
+   "slug": "gel-pen-set",
+   "categoryId": "stationery",
+   "brandId": "inkwell",
+   "description": "Ten quick-drying 0.5mm gel pens that don't smudge under the side of your hand.",
+   "price": 9.5,
+   "salePrice": 7.6,
+   "tax": 0,
+   "sku": "STA-PEN-10",
+   "barcode": "8901234500271",
+   "unit": "pack",
+   "moq": 1,
+   "maxQty": 12,
+   "rating": 4.5,
+   "reviews": 388,
+   "sold": 2440,
+   "createdAt": "2026-01-30",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "near"
+   ],
+   "art": {
+    "shape": "box",
+    "color": "#128C6C",
+    "accent": "#E9F7EE"
+   },
+   "attributes": {
+    "pageCount": "—",
+    "ruling": "Plain",
+    "size": "0.5 mm",
+    "material": "Gel ink"
+   },
+   "stock": {
+    "store-01": 46,
+    "store-02": 25
+   },
+   "position": 32,
+   "sellerId": "inkwell-stationery"
+  },
+  {
+   "id": "dog-food",
+   "name": "Adult Dog Dry Food",
+   "slug": "adult-dog-dry-food",
+   "categoryId": "pet",
+   "brandId": "pawsome",
+   "description": "Chicken-first kibble with glucosamine for joints. Small kibble size suits most breeds.",
+   "price": 42,
+   "salePrice": 33.6,
+   "tax": 0,
+   "sku": "PET-DOG-5K",
+   "barcode": "8901234500288",
+   "unit": "bag",
+   "moq": 1,
+   "maxQty": 4,
+   "rating": 4.7,
+   "reviews": 811,
+   "sold": 1720,
+   "createdAt": "2026-04-18",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "bestseller",
+    "popular"
+   ],
+   "art": {
+    "shape": "bag",
+    "color": "#C98A2E",
+    "accent": "#FCF3E3"
+   },
+   "attributes": {
+    "petType": "Dog",
+    "lifeStage": "Adult",
+    "weight": "5 kg",
+    "flavour": "Chicken"
+   },
+   "variants": [
+    {
+     "id": "dog-2",
+     "label": "2 kg",
+     "options": {
+      "weight": "2 kg"
+     },
+     "price": 19,
+     "salePrice": 15.2,
+     "sku": "PET-DOG-2K",
+     "stock": {
+      "store-01": 18,
+      "store-02": 9
+     }
+    },
+    {
+     "id": "dog-5",
+     "label": "5 kg",
+     "options": {
+      "weight": "5 kg"
+     },
+     "price": 42,
+     "salePrice": 33.6,
+     "sku": "PET-DOG-5K",
+     "stock": {
+      "store-01": 8,
+      "store-02": 2
+     }
+    }
+   ],
+   "position": 33,
+   "sellerId": "pawsome-pets"
+  },
+  {
+   "id": "cat-litter",
+   "name": "Clumping Cat Litter",
+   "slug": "clumping-cat-litter",
+   "categoryId": "pet",
+   "brandId": "pawsome",
+   "description": "Low-dust bentonite that clumps hard and scoops clean, with activated carbon for odour.",
+   "price": 16,
+   "salePrice": 12.8,
+   "tax": 0,
+   "sku": "PET-CAT-10",
+   "barcode": "8901234500295",
+   "unit": "bag",
+   "moq": 1,
+   "maxQty": 5,
+   "rating": 4.4,
+   "reviews": 456,
+   "sold": 1180,
+   "createdAt": "2026-02-22",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [],
+   "art": {
+    "shape": "bag",
+    "color": "#7A6A4F",
+    "accent": "#F0EFEA"
+   },
+   "attributes": {
+    "petType": "Cat",
+    "lifeStage": "Adult",
+    "weight": "10 L",
+    "flavour": "—"
+   },
+   "stock": {
+    "store-01": 20,
+    "store-02": 0
+   },
+   "position": 34,
+   "sellerId": "pawsome-pets"
+  },
+  {
+   "id": "cotton-tshirt",
+   "name": "Heavyweight Cotton T-Shirt",
+   "slug": "heavyweight-cotton-tshirt",
+   "categoryId": "fashion",
+   "brandId": "urbanthread",
+   "description": "240gsm combed cotton with a boxy fit and a ribbed collar that keeps its shape after washing.",
+   "price": 28,
+   "salePrice": 19.6,
+   "tax": 0,
+   "sku": "FSH-TSH-BLK",
+   "barcode": "8901234500301",
+   "unit": "piece",
+   "moq": 1,
+   "maxQty": 8,
+   "rating": 4.6,
+   "reviews": 1320,
+   "sold": 4410,
+   "createdAt": "2026-07-30",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "new",
+    "flash",
+    "bestseller"
+   ],
+   "art": {
+    "shape": "apparel",
+    "color": "#243B53",
+    "accent": "#EFEDF7"
+   },
+   "attributes": {
+    "size": "M",
+    "color": "Black",
+    "material": "100% Cotton",
+    "gender": "Unisex",
+    "pattern": "Solid",
+    "fit": "Relaxed"
+   },
+   "variants": [
+    {
+     "id": "ts-s-b",
+     "label": "S / Black",
+     "options": {
+      "size": "S",
+      "color": "Black"
+     },
+     "price": 28,
+     "salePrice": 19.6,
+     "sku": "FSH-TSH-SB",
+     "stock": {
+      "store-01": 10,
+      "store-02": 5
+     }
+    },
+    {
+     "id": "ts-m-b",
+     "label": "M / Black",
+     "options": {
+      "size": "M",
+      "color": "Black"
+     },
+     "price": 28,
+     "salePrice": 19.6,
+     "sku": "FSH-TSH-MB",
+     "stock": {
+      "store-01": 14,
+      "store-02": 7
+     }
+    },
+    {
+     "id": "ts-l-b",
+     "label": "L / Black",
+     "options": {
+      "size": "L",
+      "color": "Black"
+     },
+     "price": 28,
+     "salePrice": 19.6,
+     "sku": "FSH-TSH-LB",
+     "stock": {
+      "store-01": 2,
+      "store-02": 0
+     }
+    },
+    {
+     "id": "ts-m-w",
+     "label": "M / White",
+     "options": {
+      "size": "M",
+      "color": "White"
+     },
+     "price": 28,
+     "salePrice": 21,
+     "sku": "FSH-TSH-MW",
+     "stock": {
+      "store-01": 6,
+      "store-02": 3
+     }
+    },
+    {
+     "id": "ts-xl-w",
+     "label": "XL / White",
+     "options": {
+      "size": "XL",
+      "color": "White"
+     },
+     "price": 30,
+     "salePrice": 22.5,
+     "sku": "FSH-TSH-XLW",
+     "stock": {
+      "store-01": 0,
+      "store-02": 0
+     }
+    }
+   ],
+   "position": 35,
+   "sellerId": "urbanthread-apparel"
+  },
+  {
+   "id": "running-shoes",
+   "name": "Everyday Running Shoes",
+   "slug": "everyday-running-shoes",
+   "categoryId": "fashion",
+   "brandId": "urbanthread",
+   "description": "A soft foam midsole for daily miles with a breathable knit upper. True to size for most feet.",
+   "price": 89,
+   "salePrice": 66.75,
+   "tax": 0,
+   "sku": "FSH-SHO-42",
+   "barcode": "8901234500318",
+   "unit": "pair",
+   "moq": 1,
+   "maxQty": 3,
+   "rating": 4.5,
+   "reviews": 640,
+   "sold": 980,
+   "createdAt": "2026-05-19",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "popular"
+   ],
+   "art": {
+    "shape": "apparel",
+    "color": "#5C46B0",
+    "accent": "#EFEDF7"
+   },
+   "attributes": {
+    "size": "L",
+    "color": "Slate",
+    "material": "Knit, rubber",
+    "gender": "Unisex",
+    "pattern": "Solid",
+    "fit": "True to size"
+   },
+   "variants": [
+    {
+     "id": "sh-41",
+     "label": "UK 7",
+     "options": {
+      "size": "UK 7"
+     },
+     "price": 89,
+     "salePrice": 66.75,
+     "sku": "FSH-SHO-41",
+     "stock": {
+      "store-01": 4,
+      "store-02": 2
+     }
+    },
+    {
+     "id": "sh-42",
+     "label": "UK 8",
+     "options": {
+      "size": "UK 8"
+     },
+     "price": 89,
+     "salePrice": 66.75,
+     "sku": "FSH-SHO-42",
+     "stock": {
+      "store-01": 6,
+      "store-02": 1
+     }
+    },
+    {
+     "id": "sh-43",
+     "label": "UK 9",
+     "options": {
+      "size": "UK 9"
+     },
+     "price": 89,
+     "salePrice": 66.75,
+     "sku": "FSH-SHO-43",
+     "stock": {
+      "store-01": 0,
+      "store-02": 0
+     }
+    }
+   ],
+   "position": 36,
+   "sellerId": "urbanthread-apparel"
+  },
+  {
+   "id": "canvas-tote",
+   "name": "Canvas Tote Bag",
+   "slug": "canvas-tote-bag",
+   "categoryId": "accessories",
+   "brandId": "urbanthread",
+   "description": "16oz canvas with reinforced straps and an inner zip pocket. Holds a laptop without sagging.",
+   "price": 32,
+   "salePrice": 24,
+   "tax": 0,
+   "sku": "ACC-TOT-NAT",
+   "barcode": "8901234500325",
+   "unit": "piece",
+   "moq": 1,
+   "maxQty": 5,
+   "rating": 4.7,
+   "reviews": 415,
+   "sold": 1120,
+   "createdAt": "2026-06-30",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "new",
+    "near"
+   ],
+   "art": {
+    "shape": "apparel",
+    "color": "#7A6A4F",
+    "accent": "#F0EFEA"
+   },
+   "attributes": {
+    "material": "16oz Canvas",
+    "color": "Natural",
+    "dimensions": "38 × 40 × 12 cm",
+    "warranty": "—"
+   },
+   "stock": {
+    "store-01": 13,
+    "store-02": 6
+   },
+   "position": 37,
+   "sellerId": "urbanthread-apparel"
+  },
+  {
+   "id": "leather-wallet",
+   "name": "Slim Leather Wallet",
+   "slug": "slim-leather-wallet",
+   "categoryId": "accessories",
+   "brandId": "urbanthread",
+   "description": "Full-grain leather that softens with use. Six card slots and a note compartment, no bulk.",
+   "price": 45,
+   "salePrice": 36,
+   "tax": 0,
+   "sku": "ACC-WAL-BRN",
+   "barcode": "8901234500332",
+   "unit": "piece",
+   "moq": 1,
+   "maxQty": 4,
+   "rating": 4.6,
+   "reviews": 287,
+   "sold": 640,
+   "createdAt": "2026-03-12",
+   "status": "active",
+   "deliveryAvailable": true,
+   "tags": [
+    "popular"
+   ],
+   "art": {
+    "shape": "box",
+    "color": "#6B4A2F",
+    "accent": "#F3EDE6"
+   },
+   "attributes": {
+    "material": "Full-grain leather",
+    "color": "Brown",
+    "dimensions": "10 × 8 cm",
+    "warranty": "1 year"
+   },
+   "stock": {
+    "store-01": 9,
+    "store-02": 4
+   },
+   "position": 38,
+   "sellerId": "urbanthread-apparel"
+  }
+ ],
+ "company": {
+  "id": "vyra",
+  "name": "Vyra Retail Ltd."
+ },
+ "branches": [
+  {
+   "id": "store-01",
+   "name": "Vyra Central",
+   "code": "CEN",
+   "address": "12 Harbour Street, Central District",
+   "city": "Metro City",
+   "distanceKm": 1.2,
+   "etaMinutes": 18,
+   "open": true,
+   "hours": "7:00 AM – 11:00 PM",
+   "phone": "+1 555 0142",
+   "pharmacistOnDuty": true,
+   "otpRequired": true
+  },
+  {
+   "id": "store-02",
+   "name": "Vyra Riverside",
+   "code": "RIV",
+   "address": "88 Riverside Walk, North Quarter",
+   "city": "Metro City",
+   "distanceKm": 4.6,
+   "etaMinutes": 35,
+   "open": true,
+   "hours": "8:00 AM – 10:00 PM",
+   "phone": "+1 555 0177",
+   "pharmacistOnDuty": false,
+   "otpRequired": true
+  }
+ ]
+}
