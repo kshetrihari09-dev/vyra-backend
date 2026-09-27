@@ -3,7 +3,10 @@
  *
  * Usage:
  *   ADMIN_NAME="Hari Khatri Kshetri" ADMIN_EMAIL="khatrihari9999@gmail.com" \
- *   ADMIN_PASSWORD="@#passhari123" node --env-file-if-exists=.env scripts/create-admin.js
+ *   ADMIN_PASSWORD="@#passhari123" ADMIN_PHONE="9847052769" \
+ *   node --env-file-if-exists=.env scripts/create-admin.js
+ *
+ * ADMIN_PHONE is optional. Requires a `phone` column on `users`.
  *
  * Safe to re-run: if the email already exists, it just resets the password and
  * makes sure the 'admin' role is attached — it won't create a duplicate user.
@@ -14,6 +17,7 @@ import { hashPassword } from "../src/utils/password.js";
 const name = process.env.ADMIN_NAME;
 const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
 const password = process.env.ADMIN_PASSWORD;
+const phone = process.env.ADMIN_PHONE?.trim() || null;
 
 if (!name || !email || !password) {
   console.error("usage: ADMIN_NAME=... ADMIN_EMAIL=... ADMIN_PASSWORD=... node scripts/create-admin.js");
@@ -35,11 +39,11 @@ try {
   const passwordHash = await hashPassword(password);
 
   const { rows } = await client.query(
-    `INSERT INTO users (full_name, email, password_hash, email_verified_at)
-     VALUES ($1, $2, $3, now())
-     ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, full_name = EXCLUDED.full_name
+    `INSERT INTO users (full_name, email, password_hash, phone, email_verified_at)
+     VALUES ($1, $2, $3, $4, now())
+     ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, full_name = EXCLUDED.full_name, phone = EXCLUDED.phone
      RETURNING id`,
-    [name, email, passwordHash],
+    [name, email, passwordHash, phone],
   );
   const userId = rows[0].id;
 
