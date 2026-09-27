@@ -54,7 +54,7 @@ export function createContainer(config, overrides = {}) {
     purchasing: createPurchasingRepository(),
   };
   const tokens = createTokenService({ secret: config.auth.jwtSecret, ttlSeconds: config.auth.accessTtlSeconds });
-  const notifier = createNotifier({ driver: config.notify.driver, logger });
+  const notifier = createNotifier({ driver: config.notify.driver, logger, twilio: config.notify.twilio });
   const audit = createAuditService({ repo: repos.audit, pool });
 
   const services = {

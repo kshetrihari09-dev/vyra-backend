@@ -38,8 +38,22 @@ export function loadConfig(env = process.env) {
   if (isProd && corsOrigins.includes("*")) errors.push("CORS_ORIGIN must not be * (credentials are used)");
 
   const notifyDriver = env.NOTIFY_DRIVER || (isProd ? "disabled" : "console");
-  if (!["console", "disabled"].includes(notifyDriver)) errors.push("NOTIFY_DRIVER must be console or disabled");
-  if (isProd && notifyDriver === "console") errors.push("NOTIFY_DRIVER=console would log OTPs and reset tokens; not allowed in production");
+  if (!["console", "disabled", "twilio"].includes(notifyDriver)) errors.push("NOTIFY_DRIVER must be console, twilio or disabled");
+  const allowConsoleInProd = bool(env.ALLOW_CONSOLE_NOTIFY_IN_PROD, false);
+  if (isProd && notifyDriver === "console" && !allowConsoleInProd) {
+    errors.push("NOTIFY_DRIVER=console would log OTPs and reset tokens in production; set ALLOW_CONSOLE_NOTIFY_IN_PROD=true if this is intentional (e.g. temporary testing)");
+  }
+
+  const twilio = {
+    accountSid: env.TWILIO_ACCOUNT_SID || "",
+    authToken: env.TWILIO_AUTH_TOKEN || "",
+    fromNumber: env.TWILIO_FROM_NUMBER || "",
+  };
+  if (notifyDriver === "twilio") {
+    for (const [name, value] of [["TWILIO_ACCOUNT_SID", twilio.accountSid], ["TWILIO_AUTH_TOKEN", twilio.authToken], ["TWILIO_FROM_NUMBER", twilio.fromNumber]]) {
+      if (!value) errors.push(`${name} is required when NOTIFY_DRIVER=twilio`);
+    }
+  }
 
   const otpDevCode = env.OTP_DEV_CODE || "";
   if (otpDevCode && !/^\d{4}$/.test(otpDevCode)) errors.push("OTP_DEV_CODE must be exactly 4 digits");
@@ -80,7 +94,7 @@ export function loadConfig(env = process.env) {
       secure: env.COOKIE_SECURE === undefined || env.COOKIE_SECURE === "" ? isProd : bool(env.COOKIE_SECURE),
       domain: env.COOKIE_DOMAIN || undefined,
     },
-    notify: { driver: notifyDriver },
+    notify: { driver: notifyDriver, twilio },
     /* Rate limiting can only be switched off outside production (tests / local debugging). */
     rateLimit: { enabled: isProd ? true : !bool(env.DISABLE_RATE_LIMIT, false) },
     storage: {
