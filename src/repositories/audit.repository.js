@@ -1,3 +1,5 @@
+import { escapeLike } from "../utils/text.js";
+
 export function createAuditRepository() {
   return {
     async insert(db, e) {
@@ -10,12 +12,15 @@ export function createAuditRepository() {
       );
     },
 
-    async list(db, { entityType, entityId, action, actorUserId, limit, offset }) {
+    async list(db, { entityType, entityId, action, actionPrefix, actorUserId, from, to, limit, offset }) {
       const params = [];
       const where = [];
       if (entityType) { params.push(entityType); where.push(`entity_type = $${params.length}`); }
       if (entityId) { params.push(entityId); where.push(`entity_id = $${params.length}`); }
       if (action) { params.push(action); where.push(`action = $${params.length}`); }
+      if (actionPrefix) { params.push(`${escapeLike(actionPrefix)}%`); where.push(`action LIKE $${params.length} ESCAPE '\\'`); }
+      if (from) { params.push(from); where.push(`at >= $${params.length}`); }
+      if (to) { params.push(to); where.push(`at < $${params.length}`); }
       if (actorUserId) { params.push(actorUserId); where.push(`actor_user_id = $${params.length}`); }
       const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
       const total = Number((await db.query(`SELECT count(*) AS n FROM audit_logs ${whereSql}`, params)).rows[0].n);

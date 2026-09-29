@@ -11,10 +11,10 @@ export function createOrdersRepository() {
     async insert(db, o) {
       const { rows } = await db.query(
         `INSERT INTO orders (number, user_id, branch_id, status, payment_method, address_id, address, delivery_option_id, delivery_fee, slot,
-                             subtotal, discount, tax, total, coupon_code, notes, instructions, otp, otp_required, eta, is_demo)
+                             subtotal, discount, tax, total, coupon_code, notes, instructions, otp_nonce, otp_required, eta, is_demo)
          VALUES ($1,$2,$3,'placed',$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
         [o.number, o.userId, o.branchId, o.paymentMethod, o.addressId ?? null, JSON.stringify(o.address), o.deliveryOptionId, o.deliveryFee, o.slot ?? null,
-         o.subtotal, o.discount, o.tax, o.total, o.couponCode ?? null, o.notes ?? null, o.instructions ?? null, o.otp ?? null, o.otpRequired, o.eta ?? null, o.isDemo ?? false],
+         o.subtotal, o.discount, o.tax, o.total, o.couponCode ?? null, o.notes ?? null, o.instructions ?? null, o.otpNonce ?? null, o.otpRequired, o.eta ?? null, o.isDemo ?? false],
       );
       return rows[0];
     },
@@ -75,9 +75,9 @@ export function createOrdersRepository() {
       const sets = ["status = $2"];
       const values = [id, status];
       const map = { deliveredAt: "delivered_at", cancelledAt: "cancelled_at", returnedAt: "returned_at", cancelReason: "cancel_reason",
-        paymentStatus: "payment_status", partner: "partner", eta: "eta", otp: "otp" };
+        paymentStatus: "payment_status", partner: "partner", eta: "eta", otpNonce: "otp_nonce", otpAttempts: "otp_attempts" };
       for (const [k, col] of Object.entries(map)) {
-        if (patch[k] !== undefined) { values.push(col === "partner" ? JSON.stringify(patch[k]) : patch[k]); sets.push(`${col} = $${values.length}${col === "partner" ? "::jsonb" : ""}`); }
+        if (patch[k] !== undefined) { values.push(col === "partner" && patch[k] !== null ? JSON.stringify(patch[k]) : patch[k]); sets.push(`${col} = $${values.length}${col === "partner" ? "::jsonb" : ""}`); }
       }
       const { rows } = await db.query(`UPDATE orders SET ${sets.join(", ")} WHERE id = $1 RETURNING *`, values);
       return rows[0] || null;

@@ -7,6 +7,9 @@ import { createOrdersService } from "../../src/services/orders.service.js";
 import { createPricingService } from "../../src/services/pricing.service.js";
 import { createFakeCommerce, customer, staffOrders } from "../helpers/commerceFakes.js";
 import { fakeAudit } from "../helpers/fakes.js";
+import { createDeliveryCodes } from "../../src/utils/deliveryCode.js";
+
+const codes = createDeliveryCodes(Buffer.alloc(32, 7).toString("base64"));
 
 const ctx = { ip: "203.0.113.5", requestId: "r" };
 
@@ -21,7 +24,11 @@ function setup() {
   const coupons = createCouponsService({ repos: fake.repos });
   const pricing = createPricingService({ repos: fake.repos, coupons });
   const cart = createCartService({ pool: {}, repos: fake.repos, pricing });
-  const orders = createOrdersService({ pool: {}, withTx, repos: fake.repos, pricing, audit });
+  // Prescription gating and payment creation are their own concern, covered in prescriptions.test.js and
+  // payments.test.js — these permissive stubs keep this file's tests focused on pricing/inventory/FEFO.
+  const prescriptions = { assertCoverage: async () => [], linkToOrder: async () => {} };
+  const payments = { createForOrder: async () => {}, markCodCollected: async () => {} };
+  const orders = createOrdersService({ pool: {}, withTx, repos: fake.repos, pricing, audit, prescriptions, payments, codes });
   const addresses = createAddressesService({ pool: {}, withTx, repos: fake.repos });
   return { ...fake, audit, coupons, pricing, cart, orders, addresses };
 }
@@ -136,11 +143,13 @@ describe("order fulfilment", () => {
     assert.equal(batches.find((b) => b.id === "b-new").qty, 8); // remaining 2 taken from the next batch
   });
 
-  it("'assigned' attaches a delivery partner", async () => {
+  it("the generic staff endpoint stops at 'packed' — assigned/out/delivered belong to the delivery module (no OTP bypass)", async () => {
     await e.orders.advance(staffOrders, order.id, { status: "preparing" }, ctx);
     await e.orders.advance(staffOrders, order.id, { status: "packed" }, ctx);
-    const assigned = await e.orders.advance(staffOrders, order.id, { status: "assigned" }, ctx);
-    assert.ok(assigned.partner?.name);
+    for (const status of ["assigned", "out_for_delivery", "delivered"]) {
+      await assert.rejects(e.orders.advance(staffOrders, order.id, { status }, ctx), { code: "USE_DELIVERY_FLOW" });
+    }
+    assert.equal((await e.orders.get(staffOrders, order.id)).status, "packed");
   });
 
   it("cancelling releases the reservation and is refused once packed", async () => {
@@ -168,13 +177,29 @@ describe("order visibility", () => {
     await assert.rejects(e.orders.get({ id: "stranger", permissions: [] }, order.id), { code: "ORDER_NOT_FOUND" });
   });
 
-  it("otp is only ever included for the owner or delivery-permitted staff", async () => {
+  it("the handover code is derived, never stored, and shown to the owner ONLY — not to riders or dispatch", async () => {
     const e = setup();
     const order = await e.orders.create(customer, { items: [{ productId: "soap", qty: 1 }], addressId: "addr-1", paymentMethod: "cod", deliveryOptionId: "standard" }, ctx);
+    const row = e.db.orders.find((o) => o.id === order.id);
+    assert.equal(row.otp, undefined);                         // no plaintext column any more
+    assert.match(row.otp_nonce, /^[0-9a-f]{24}$/);            // only a random nonce is stored
     const mine = await e.orders.get(customer, order.id);
-    assert.equal(typeof mine.otp, "string");
-    const staffView = await e.orders.get(staffOrders, order.id); // orders:update_status/read_all, no delivery perms
-    assert.equal(staffView.otp, undefined);
+    assert.match(mine.otp, /^\d{4}$/);
+    assert.equal(mine.otp, codes.codeFor(row.id, row.otp_nonce));
+    assert.equal((await e.orders.get(customer, order.id)).otp, mine.otp); // stable across reads
+    for (const who of [staffOrders, { id: "rider", permissions: ["delivery:rider", "orders:read_all"] }, { id: "dispatch", permissions: ["delivery:manage", "orders:read_all"] }]) {
+      assert.equal((await e.orders.get(who, order.id)).otp, undefined, who.id);
+    }
+    assert.equal((await e.orders.list({ id: "dispatch", permissions: ["orders:read_all", "delivery:manage"] })).some((o) => o.otp !== undefined), false);
+  });
+
+  it("no code is issued when the branch doesn't require one", async () => {
+    const e = setup();
+    e.db.inventory.set(e.key("store-02", "soap", ""), { id: e.key("store-02", "soap", ""), on_hand: 10, reserved: 0 });
+    const order = await e.orders.create(customer, { items: [{ productId: "soap", qty: 1 }], addressId: "addr-1", paymentMethod: "cod", deliveryOptionId: "standard", branch: "store-02" }, ctx);
+    assert.equal(order.otpRequired, false);
+    assert.equal(order.otp, undefined);
+    assert.equal(e.db.orders.find((o) => o.id === order.id).otp_nonce, null);
   });
 });
 

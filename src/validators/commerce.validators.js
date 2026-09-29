@@ -49,10 +49,8 @@ export const createOrderBody = z.object({
 
 export const orderIdParams = z.object({ id: z.string().uuid() });
 
-export const orderStatusBody = z.object({
-  status: z.enum(["confirmed", "preparing", "packed", "assigned", "out_for_delivery", "delivered"]),
-  partner: z.object({ name: text(100), phone: text(30), vehicle: text(60) }).nullable().optional(),
-});
+/** Staff can only move an order up to "packed" here; assigned → delivered is the delivery module's (Phase 7). */
+export const orderStatusBody = z.object({ status: z.enum(["confirmed", "preparing", "packed"]) });
 
 export const orderCancelBody = z.object({ reason: text(300).nullable().optional() });
 

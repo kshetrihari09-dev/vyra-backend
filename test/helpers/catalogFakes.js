@@ -75,3 +75,5 @@ export function createFakeCatalog() {
 
 export const adminActor = { id: "u-admin", name: "Admin", roles: ["admin"], permissions: ["catalog:write", "catalog:price", "inventory:adjust", "inventory:read"] };
 export const staffNoStock = { id: "u-cat", name: "Catalog", roles: ["x"], permissions: ["catalog:write"] };
+export const sellerActor = { id: "u-seller-1", name: "Acme Owner", roles: ["seller"], permissions: ["catalog:write_own", "seller:manage_own"], sellerId: "acme" };
+export const otherSellerActor = { id: "u-seller-2", name: "Zenith Owner", roles: ["seller"], permissions: ["catalog:write_own", "seller:manage_own"], sellerId: "zenith" };

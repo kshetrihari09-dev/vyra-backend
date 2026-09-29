@@ -6,8 +6,9 @@ export const toAddressDto = (r) => ({
   instructions: r.instructions ?? "", isDefault: r.is_default,
 });
 
-/** `snapshot` is the address object stored on the order (already the same shape as toAddressDto's output, minus id). */
-export function toOrderDto(r, { items = [], history = [], includeOtp = false } = {}) {
+/** `otp` is the derived hand-off code (utils/deliveryCode.js) and is passed in ONLY for the order's owner — the rider
+ *  must never receive it (they get it from the customer), and it is never stored. */
+export function toOrderDto(r, { items = [], history = [], otp = undefined } = {}) {
   const dto = {
     id: r.id, number: r.number, placedAt: r.placed_at, storeId: r.branch_id, status: r.status,
     items: items.map((it) => ({ productId: it.product_id, variantId: it.variant_id, sellerId: it.seller_id, name: it.name, qty: it.qty, unitPrice: toNumber(it.unit_price), lineTotal: toNumber(it.line_total) })),
@@ -18,7 +19,7 @@ export function toOrderDto(r, { items = [], history = [], includeOtp = false } =
     deliveryOption: r.delivery_option_id, slot: r.slot,
     totals: { subtotal: toNumber(r.subtotal), discount: toNumber(r.discount), deliveryFee: toNumber(r.delivery_fee), tax: toNumber(r.tax), total: toNumber(r.total) },
     couponCode: r.coupon_code, notes: r.notes, instructions: r.instructions,
-    otpRequired: r.otp_required, otp: includeOtp ? r.otp : undefined,
+    otpRequired: r.otp_required, otp,
     partner: r.partner ?? null, eta: r.eta, deliveredAt: r.delivered_at, cancelledAt: r.cancelled_at, cancelReason: r.cancel_reason, returnedAt: r.returned_at,
     history: history.map((h) => ({ status: h.status, at: h.at, note: h.note ?? undefined })),
   };

@@ -5,6 +5,8 @@
 import pg from "pg";
 import { seedReference } from "./reference/roles_permissions.js";
 import { seedDemoUsers } from "./demo/users.js";
+import { seedDemoRiders } from "./demo/riders.js";
+import { seedDemoSellers } from "./demo/sellers.js";
 import { seedDemoCatalog } from "./demo/catalog.js";
 import { seedDemoCommerce } from "./demo/commerce.js";
 import { seedDemoPurchasing } from "./demo/purchasing.js";
@@ -28,6 +30,8 @@ try {
   else {
     await seedReference(client); // demo users need the roles to exist
     await seedDemoUsers(client, { password: process.env.DEMO_SEED_PASSWORD || undefined });
+    console.log("demo riders:", await seedDemoRiders(client));
+    console.log("demo sellers:", await seedDemoSellers(client));
     console.log("demo catalogue:", await seedDemoCatalog(client));
     console.log("demo commerce:", await seedDemoCommerce(client));
     console.log("demo purchasing:", await seedDemoPurchasing(client));

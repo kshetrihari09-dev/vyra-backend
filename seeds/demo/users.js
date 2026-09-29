@@ -13,6 +13,7 @@ const DEMO_USERS = [
   { name: "Vyra Admin", email: "admin@vyra.example", roles: ["admin"] },
   { name: "Dr. N. Rao", email: "pharmacist@vyra.example", roles: ["pharmacist"] },
   { name: "Daniel R.", email: "rider@vyra.example", roles: ["delivery"] },
+  { name: "Priya S.", email: "rider2@vyra.example", roles: ["delivery"] },
   { name: "Warehouse Lead", email: "warehouse@vyra.example", roles: ["warehouse"] },
   { name: "Accounts", email: "accountant@vyra.example", roles: ["accountant"] },
   { name: "Support Agent", email: "support@vyra.example", roles: ["support"] },

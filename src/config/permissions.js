@@ -19,7 +19,8 @@ export const PERMISSIONS = {
   "orders:read_all": "View every order",
   "orders:update_status": "Move orders through fulfilment stages",
   "orders:cancel": "Cancel orders on a customer's behalf",
-  "orders:refund": "Issue refunds",
+  "orders:refund": "Request a refund on a customer's behalf",
+  "payments:manage": "Confirm manual payments, and approve or reject refunds",
   "prescriptions:read_all": "View every prescription",
   "prescriptions:review": "Approve or reject prescriptions",
   "customers:read": "View customer records",
@@ -31,7 +32,7 @@ export const PERMISSIONS = {
   "payouts:approve": "Approve seller payouts",
   "purchases:read": "View purchase orders",
   "purchases:manage": "Create purchase orders",
-  "delivery:manage": "Assign riders and manage delivery zones",
+  "delivery:manage": "Manage riders and dispatch: assign, reassign, unassign, reset a locked handover code",
   "delivery:rider": "Perform rider operations (accept, pick up, deliver, share location)",
   "promotions:manage": "Manage coupons and promotions",
   "pos:sell": "Ring up point-of-sale transactions",
@@ -62,11 +63,11 @@ export const ROLES = {
   delivery: { label: "Delivery partner", description: "Rider app", permissions: ["delivery:rider"] },
   warehouse: {
     label: "Warehouse / inventory", description: "Stock, purchasing and packing (the frontend's Inventory Manager)",
-    permissions: ["inventory:read", "inventory:adjust", "inventory:transfer", "inventory:receive", "purchases:read", "purchases:manage", "orders:read_all", "orders:update_status"],
+    permissions: ["inventory:read", "inventory:adjust", "inventory:transfer", "inventory:receive", "purchases:read", "purchases:manage", "orders:read_all", "orders:update_status", "delivery:manage"],
   },
   accountant: {
     label: "Accountant", description: "Payouts, refunds and reporting",
-    permissions: ["payouts:read_all", "payouts:approve", "orders:read_all", "orders:refund", "reports:read", "purchases:read", "audit:read"],
+    permissions: ["payouts:read_all", "payouts:approve", "orders:read_all", "orders:refund", "payments:manage", "reports:read", "purchases:read", "audit:read"],
   },
   support: {
     label: "Customer support", description: "Order and customer look-ups, refunds",

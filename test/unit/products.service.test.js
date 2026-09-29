@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import { createProductsService } from "../../src/services/products.service.js";
-import { adminActor, createFakeCatalog, staffNoStock } from "../helpers/catalogFakes.js";
+import { adminActor, createFakeCatalog, otherSellerActor, sellerActor, staffNoStock } from "../helpers/catalogFakes.js";
 import { fakeAudit } from "../helpers/fakes.js";
 
 const ctx = { ip: "203.0.113.5", requestId: "r" };
@@ -145,5 +145,79 @@ describe("visibility", () => {
     await e.service.list({ page: 1, pageSize: 25, sort: "relevance", q: "  ParaCET ", "attr.origin": "India", "attr.bad key": "x", "attr.": "y", notattr: "z" }, undefined);
     assert.deepEqual(e.repos.products.lastSearch.attrs, { origin: "India" });
     assert.equal(e.repos.products.lastSearch.q, "paracet");
+  });
+});
+
+// Phase 6: a seller (catalog:write_own) manages only their own catalogue, and a new listing always starts
+// out unapproved — this is what makes the marketplace's product moderation actually mean something.
+describe("seller-scoped catalogue (decision: sellers can't self-approve)", () => {
+  it("forces a new listing's sellerId to the caller's own shop, and its status to pending_review regardless of what's submitted", async () => {
+    const e = setup();
+    const p = await e.service.create(sellerActor, { ...base, sku: "SEL-1", sellerId: "someone-else", status: "active" }, ctx);
+    assert.equal(p.sellerId, "acme");
+    assert.equal(p.status, "pending_review");
+  });
+
+  it("a seller with no shop yet cannot list anything", async () => {
+    const e = setup();
+    await assert.rejects(e.service.create({ ...sellerActor, sellerId: null }, { ...base, sku: "SEL-2" }, ctx), (err) => err.status === 403);
+  });
+
+  it("the owner can see their own pending listing; a different seller gets 404, not 403", async () => {
+    const e = setup();
+    const p = await e.service.create(sellerActor, { ...base, sku: "SEL-3" }, ctx);
+    assert.equal((await e.service.get(p.id, sellerActor)).status, "pending_review");
+    await assert.rejects(e.service.get(p.id, otherSellerActor), { code: "PRODUCT_NOT_FOUND" });
+  });
+
+  it("a seller can't edit or delete another seller's product (404, not 403 — no existence leak)", async () => {
+    const e = setup();
+    const p = await e.service.create(sellerActor, { ...base, sku: "SEL-4" }, ctx);
+    await assert.rejects(e.service.update(otherSellerActor, p.id, { ...base, sku: "SEL-4", status: "active" }, ctx), { code: "PRODUCT_NOT_FOUND" });
+    await assert.rejects(e.service.remove(otherSellerActor, p.id, ctx), { code: "PRODUCT_NOT_FOUND" });
+  });
+
+  it("a seller cannot self-approve a pending listing by PUTting status: active", async () => {
+    const e = setup();
+    const p = await e.service.create(sellerActor, { ...base, sku: "SEL-5" }, ctx);
+    const updated = await e.service.update(sellerActor, p.id, { ...base, sku: "SEL-5", status: "active" }, ctx);
+    assert.equal(updated.status, "pending_review");
+  });
+
+  it("once staff approve it, the owning seller can toggle active/inactive themselves", async () => {
+    const e = setup();
+    const p = await e.service.create(sellerActor, { ...base, sku: "SEL-6" }, ctx);
+    await e.service.update(adminActor, p.id, { ...base, sku: "SEL-6", status: "active" }, ctx); // staff approval
+    const deactivated = await e.service.update(sellerActor, p.id, { ...base, sku: "SEL-6", status: "inactive" }, ctx);
+    assert.equal(deactivated.status, "inactive");
+    const reactivated = await e.service.update(sellerActor, p.id, { ...base, sku: "SEL-6", status: "active" }, ctx);
+    assert.equal(reactivated.status, "active");
+  });
+
+  it("a seller can delete their own product regardless of its status", async () => {
+    const e = setup();
+    const p = await e.service.create(sellerActor, { ...base, sku: "SEL-7" }, ctx);
+    await e.service.remove(sellerActor, p.id, ctx);
+    await assert.rejects(e.service.get(p.id, sellerActor), { code: "PRODUCT_NOT_FOUND" });
+  });
+
+  it("an owner can widen the status filter for their own shop's listings, but never for another shop's", async () => {
+    const e = setup();
+    await e.service.create(sellerActor, { ...base, sku: "SEL-9" }, ctx); // pending_review
+    const q = { page: 1, pageSize: 25, sort: "relevance", status: "any" };
+    await e.service.list({ ...q, sellerId: "acme" }, sellerActor);
+    assert.ok(e.repos.products.lastSearch.statuses.includes("pending_review"), "own shop: widened");
+    await e.service.list({ ...q, sellerId: "zenith" }, sellerActor);
+    assert.deepEqual(e.repos.products.lastSearch.statuses, ["active"], "someone else's shop: public view only");
+    await e.service.list({ ...q, sellerId: "acme" }, otherSellerActor);
+    assert.deepEqual(e.repos.products.lastSearch.statuses, ["active"]);
+  });
+
+  it("catalog:write staff are unaffected by any of this — they can set status directly and touch any shop's listing", async () => {
+    const e = setup();
+    const p = await e.service.create(adminActor, { ...base, sku: "SEL-8", sellerId: "acme" }, ctx);
+    assert.equal(p.status, "active");
+    const updated = await e.service.update(adminActor, p.id, { ...base, sku: "SEL-8", status: "rejected" }, ctx);
+    assert.equal(updated.status, "rejected");
   });
 });

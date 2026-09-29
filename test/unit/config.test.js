@@ -26,9 +26,9 @@ describe("environment validation", () => {
     assert.doesNotThrow(() => loadConfig(prod()));
     assert.throws(() => loadConfig(prod({ CORS_ORIGIN: "" })), /CORS_ORIGIN is required/);
     assert.throws(() => loadConfig(prod({ CORS_ORIGIN: "*" })), /must not be \*/);
-    assert.throws(() => loadConfig(prod({ NOTIFY_DRIVER: "console" })), /ALLOW_CONSOLE_NOTIFY_IN_PROD/);
-    assert.doesNotThrow(() => loadConfig(prod({ NOTIFY_DRIVER: "console", ALLOW_CONSOLE_NOTIFY_IN_PROD: "true" })));
+    assert.throws(() => loadConfig(prod({ NOTIFY_DRIVER: "console" })), /not allowed in production/);
     assert.throws(() => loadConfig(prod({ OTP_DEV_CODE: "1234" })), /OTP_DEV_CODE must not be set/);
+    assert.throws(() => loadConfig(prod({ PAYMENTS_MANUAL_WEBHOOK_SECRET: "" })), /PAYMENTS_MANUAL_WEBHOOK_SECRET is required/);
   });
 
   it("production defaults: secure cookies on, notifier disabled, rate limiting cannot be turned off", () => {

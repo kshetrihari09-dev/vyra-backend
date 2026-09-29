@@ -38,22 +38,18 @@ export function loadConfig(env = process.env) {
   if (isProd && corsOrigins.includes("*")) errors.push("CORS_ORIGIN must not be * (credentials are used)");
 
   const notifyDriver = env.NOTIFY_DRIVER || (isProd ? "disabled" : "console");
-  if (!["console", "disabled", "twilio"].includes(notifyDriver)) errors.push("NOTIFY_DRIVER must be console, twilio or disabled");
-  const allowConsoleInProd = bool(env.ALLOW_CONSOLE_NOTIFY_IN_PROD, false);
-  if (isProd && notifyDriver === "console" && !allowConsoleInProd) {
-    errors.push("NOTIFY_DRIVER=console would log OTPs and reset tokens in production; set ALLOW_CONSOLE_NOTIFY_IN_PROD=true if this is intentional (e.g. temporary testing)");
+  if (!["console", "disabled", "webhook"].includes(notifyDriver)) errors.push("NOTIFY_DRIVER must be console, disabled or webhook");
+  // "webhook" hands each SMS/email to YOUR gateway as a signed HTTP POST (see services/notifier.js) — the provider-agnostic
+  // way to reach a real SMS/email service without this codebase depending on any one vendor's SDK.
+  const webhookUrl = env.NOTIFY_WEBHOOK_URL || "";
+  const webhookSecret = env.NOTIFY_WEBHOOK_SECRET || "";
+  if (notifyDriver === "webhook") {
+    if (!webhookUrl) errors.push("NOTIFY_WEBHOOK_URL is required when NOTIFY_DRIVER=webhook");
+    else if (!/^https?:\/\//.test(webhookUrl)) errors.push("NOTIFY_WEBHOOK_URL must be an http(s) URL");
+    else if (isProd && !webhookUrl.startsWith("https://")) errors.push("NOTIFY_WEBHOOK_URL must be https in production (messages contain OTPs and reset links)");
+    if (webhookSecret.length < 32) errors.push("NOTIFY_WEBHOOK_SECRET must be at least 32 characters when NOTIFY_DRIVER=webhook");
   }
-
-  const twilio = {
-    accountSid: env.TWILIO_ACCOUNT_SID || "",
-    authToken: env.TWILIO_AUTH_TOKEN || "",
-    fromNumber: env.TWILIO_FROM_NUMBER || "",
-  };
-  if (notifyDriver === "twilio") {
-    for (const [name, value] of [["TWILIO_ACCOUNT_SID", twilio.accountSid], ["TWILIO_AUTH_TOKEN", twilio.authToken], ["TWILIO_FROM_NUMBER", twilio.fromNumber]]) {
-      if (!value) errors.push(`${name} is required when NOTIFY_DRIVER=twilio`);
-    }
-  }
+  if (isProd && notifyDriver === "console") errors.push("NOTIFY_DRIVER=console would log OTPs and reset tokens; not allowed in production");
 
   const otpDevCode = env.OTP_DEV_CODE || "";
   if (otpDevCode && !/^\d{4}$/.test(otpDevCode)) errors.push("OTP_DEV_CODE must be exactly 4 digits");
@@ -94,14 +90,32 @@ export function loadConfig(env = process.env) {
       secure: env.COOKIE_SECURE === undefined || env.COOKIE_SECURE === "" ? isProd : bool(env.COOKIE_SECURE),
       domain: env.COOKIE_DOMAIN || undefined,
     },
-    notify: { driver: notifyDriver, twilio },
+    notify: { driver: notifyDriver, webhookUrl, webhookSecret, timeoutMs: int("NOTIFY_TIMEOUT_MS", 8000, { min: 500 }) },
+    /* Background jobs (outbox worker, retention). Off in tests; safe to run in several processes (rows are claimed with SKIP LOCKED). */
+    jobs: { enabled: bool(env.JOBS_ENABLED, nodeEnv !== "test") },
     /* Rate limiting can only be switched off outside production (tests / local debugging). */
     rateLimit: { enabled: isProd ? true : !bool(env.DISABLE_RATE_LIMIT, false) },
     storage: {
       bucket: env.STORAGE_BUCKET || null, region: env.STORAGE_REGION || null, endpoint: env.STORAGE_ENDPOINT || null,
       accessKey: env.STORAGE_ACCESS_KEY || null, secretKey: env.STORAGE_SECRET_KEY || null,
     },
+    payments: {
+      // Verifies inbound webhooks from the "manual" provider (see services/payments/manual.provider.js).
+      // Real gateways (eSewa/Khalti/card) will each bring their own secret when they're wired in.
+      manualWebhookSecret: env.PAYMENTS_MANUAL_WEBHOOK_SECRET || null,
+    },
   };
+  if (isProd && !env.PAYMENTS_MANUAL_WEBHOOK_SECRET) errors.push("PAYMENTS_MANUAL_WEBHOOK_SECRET is required in production (verifies payment webhooks)");
+
+  // Encrypts seller settlement (bank/wallet) account numbers at rest — decision D8. Required everywhere, not
+  // just production: there's no safe default for a key that decrypts real bank details.
+  const dataEncryptionKey = req("DATA_ENCRYPTION_KEY");
+  if (dataEncryptionKey) {
+    let decodedLength = -1;
+    try { decodedLength = Buffer.from(dataEncryptionKey, "base64").length; } catch { /* falls through to the error below */ }
+    if (decodedLength !== 32) errors.push("DATA_ENCRYPTION_KEY must be base64 for exactly 32 bytes (e.g. node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\")");
+  }
+  config.security = { dataEncryptionKey };
 
   if (errors.length) {
     const err = new Error(`Invalid configuration:\n  - ${errors.join("\n  - ")}`);

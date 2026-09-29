@@ -16,3 +16,20 @@ export function deliveryFeeFor(optionId, taxableAmount) {
 }
 
 export const PAYMENT_METHOD_IDS = ["card", "upi", "netbanking", "cod"];
+
+/** Operational limits for the delivery module. Kept here (not in env) — they are business rules, not deployment settings. */
+export const DELIVERY_RULES = {
+  maxAttemptsPerOrder: 2,      // failed runs before an order is closed as "returned" instead of being re-dispatched
+  maxActivePerRider: 5,        // simultaneous assigned/accepted/picked-up deliveries per rider
+  otpMaxAttempts: 5,           // wrong handover codes per order before it locks (a dispatcher must reset it)
+  locationMinIntervalMs: 5000, // faster location pings than this are dropped, not stored
+};
+
+export const FAILURE_REASONS = {
+  customer_unreachable: "Customer unreachable",
+  wrong_address: "Wrong or unfindable address",
+  customer_refused: "Customer refused the order",
+  unsafe_location: "Unsafe location",
+  other: "Other",
+};
+export const FAILURE_REASON_IDS = Object.keys(FAILURE_REASONS);

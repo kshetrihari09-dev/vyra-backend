@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, optionalAuthenticate, requirePermission } from "../middleware/authenticate.js";
+import { authenticate, optionalAuthenticate, requireAnyPermission, requirePermission } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
 import * as v from "../validators/catalog.validators.js";
 
@@ -12,6 +12,9 @@ export function catalogRoutes({ container, controller }) {
   const authed = authenticate(container);
   const maybe = optionalAuthenticate(container);
   const write = requirePermission("catalog:write");
+  // A seller (catalog:write_own) manages only their own listings — products.service enforces the scoping and
+  // the pending_review gate; categories/brands stay staff-only (`write` above).
+  const writeProduct = requireAnyPermission("catalog:write", "catalog:write_own");
 
   // categories
   r.get("/categories", maybe, validate({ query: v.includeInactiveQuery }), controller.listCategories);
@@ -33,8 +36,8 @@ export function catalogRoutes({ container, controller }) {
   // products
   r.get("/products", maybe, validate({ query: v.listProductsQuery }), controller.listProducts);
   r.get("/products/:id", maybe, validate({ params: v.idParams }), controller.getProduct);
-  r.post("/products", authed, write, validate({ body: v.createProductBody }), controller.createProduct);
-  r.put("/products/:id", authed, write, validate({ params: v.idParams, body: v.updateProductBody }), controller.updateProduct);
-  r.delete("/products/:id", authed, write, validate({ params: v.idParams }), controller.deleteProduct);
+  r.post("/products", authed, writeProduct, validate({ body: v.createProductBody }), controller.createProduct);
+  r.put("/products/:id", authed, writeProduct, validate({ params: v.idParams, body: v.updateProductBody }), controller.updateProduct);
+  r.delete("/products/:id", authed, writeProduct, validate({ params: v.idParams }), controller.deleteProduct);
   return r;
 }

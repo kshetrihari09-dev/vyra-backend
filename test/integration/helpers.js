@@ -19,6 +19,7 @@ export async function boot() {
     NODE_ENV: "test", DATABASE_URL: TEST_DB, DISABLE_RATE_LIMIT: "true",
     JWT_SECRET: "t".repeat(40), JWT_REFRESH_SECRET: "u".repeat(40),
     CORS_ORIGIN: "http://localhost:5173", OTP_DEV_CODE: "1234", NOTIFY_DRIVER: "console", LOG_LEVEL: "silent",
+    DATA_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"), // required since Phase 6 (loadConfig refuses to boot without it)
   });
   const container = createContainer(config);
   await runMigrations(container.pool, { log: () => {} });

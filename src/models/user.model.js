@@ -16,6 +16,7 @@ export function toUserDto(row) {
     roles,
     permissions: row.permissions || [],
     isStaff: isStaffRole(roles),
+    sellerId: row.seller_id ?? null, // the shop this account owns, if any — null for everyone else
     legacyId: row.legacy_id ?? null,
     emailVerified: !!row.email_verified_at,
     phoneVerified: !!row.mobile_verified_at,

@@ -119,6 +119,12 @@ export function createProductsRepository() {
       return (await db.query("SELECT 1 FROM products WHERE id = $1", [id])).rows.length > 0;
     },
 
+    /** Every active product requiring a prescription — used to default a standalone Rx upload's coverage
+        (the customer didn't come from a specific product page) to match the prototype's behaviour. */
+    async prescriptionRequiredIds(db) {
+      return (await db.query("SELECT id FROM products WHERE prescription_required AND status = 'active' AND deleted_at IS NULL")).rows.map((r) => r.id);
+    },
+
     async slugExists(db, slug, exceptId = null) {
       return (await db.query("SELECT 1 FROM products WHERE slug = $1 AND deleted_at IS NULL AND id <> COALESCE($2, '')", [slug, exceptId])).rows.length > 0;
     },

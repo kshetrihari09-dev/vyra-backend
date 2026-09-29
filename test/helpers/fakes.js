@@ -8,6 +8,8 @@ export const testEnv = (extra = {}) => ({
   JWT_REFRESH_SECRET: "b".repeat(40),
   CORS_ORIGIN: "http://localhost:5173",
   OTP_DEV_CODE: "1234",
+  PAYMENTS_MANUAL_WEBHOOK_SECRET: "c".repeat(32),
+  DATA_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
   ...extra,
 });
 export const testConfig = (extra) => loadConfig(testEnv(extra));

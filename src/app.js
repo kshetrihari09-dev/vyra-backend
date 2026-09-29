@@ -17,7 +17,16 @@ export function createApp(container) {
   if (!config.isTest) app.use(httpLogger(logger));
   app.use(securityHeaders());
   app.use(corsPolicy(config));
-  app.use(express.json({ limit: "100kb" }));
+  // `verify` stashes the exact bytes received so payment webhooks can check a signature over the raw body —
+  // re-serializing the parsed JSON would not reliably reproduce what the provider actually signed.
+  const rawBodyCapture = { verify: (req, _res, buf) => { req.rawBody = buf; } };
+  // Prescription uploads carry a base64-encoded file (~13.3 MB for a 10 MB original) — too big for the 100kb
+  // default below, so that one path gets its own parser with a bigger cap, mounted first (body-parser skips
+  // a body that's already been parsed, so the global 100kb parser after it is a no-op for this path).
+  app.use("/api/prescriptions", express.json({ limit: "14mb", ...rawBodyCapture }));
+  // A shop application can carry up to 6 documents at 5 MB each (~40 MB once base64-encoded).
+  app.use("/api/seller-applications", express.json({ limit: "45mb", ...rawBodyCapture }));
+  app.use(express.json({ limit: "100kb", ...rawBodyCapture }));
   app.use(cookieParser());
   app.use("/api", limiters.global);
   app.use("/api", createRoutes(container, limiters));

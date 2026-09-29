@@ -15,7 +15,7 @@ export const authenticate = ({ tokens, repos, pool }) => async (req, _res, next)
 
     const row = await repos.users.getAccess(pool, claims.userId);
     if (!row || row.status !== "active") throw unauthorized("INVALID_TOKEN", "Session expired");
-    req.auth = { user: { id: row.id, name: row.full_name, email: row.email, roles: row.roles, permissions: row.permissions } };
+    req.auth = { user: { id: row.id, name: row.full_name, email: row.email, roles: row.roles, permissions: row.permissions, sellerId: row.seller_id ?? null } };
     next();
   } catch (err) {
     next(err);
@@ -57,7 +57,7 @@ export const optionalAuthenticate = ({ tokens, repos, pool }) => async (req, _re
     if (scheme === "Bearer" && token) {
       const claims = tokens.verifyAccessToken(token);
       const row = claims ? await repos.users.getAccess(pool, claims.userId) : null;
-      if (row && row.status === "active") req.auth = { user: { id: row.id, name: row.full_name, email: row.email, roles: row.roles, permissions: row.permissions } };
+      if (row && row.status === "active") req.auth = { user: { id: row.id, name: row.full_name, email: row.email, roles: row.roles, permissions: row.permissions, sellerId: row.seller_id ?? null } };
     }
     next();
   } catch (err) {

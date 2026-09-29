@@ -11,12 +11,15 @@ try {
 }
 
 const container = createContainer(config);
-const { logger, pool } = container;
+const { logger, pool, scheduler } = container;
 const server = createApp(container).listen(config.port, () => logger.info("api listening", { port: config.port, env: config.nodeEnv }));
+
+if (config.jobs.enabled) scheduler.start();
 
 async function shutdown(signal) {
   logger.info("shutting down", { signal });
   server.close(async () => {
+    await scheduler.stop().catch(() => {});
     await pool.end().catch(() => {});
     process.exit(0);
   });

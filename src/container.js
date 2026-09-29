@@ -7,6 +7,12 @@ import { createInventoryRepository } from "./repositories/inventory.repository.j
 import { createOrdersRepository } from "./repositories/orders.repository.js";
 import { createPurchasingRepository } from "./repositories/purchasing.repository.js";
 import { createProductsRepository } from "./repositories/products.repository.js";
+import { createPaymentsRepository } from "./repositories/payments.repository.js";
+import { createPrescriptionsRepository } from "./repositories/prescriptions.repository.js";
+import { createDeliveryRepository } from "./repositories/delivery.repository.js";
+import { createSellersRepository } from "./repositories/sellers.repository.js";
+import { createSellerApplicationsRepository } from "./repositories/sellerApplications.repository.js";
+import { createSellerPayoutsRepository } from "./repositories/sellerPayouts.repository.js";
 import { createWishlistRepository } from "./repositories/wishlist.repository.js";
 import { createRolesRepository } from "./repositories/roles.repository.js";
 import { createSessionsRepository } from "./repositories/sessions.repository.js";
@@ -14,6 +20,10 @@ import { createUsersRepository } from "./repositories/users.repository.js";
 import { createAuditService } from "./services/audit.service.js";
 import { createAuthService } from "./services/auth.service.js";
 import { createCatalogService } from "./services/catalog.service.js";
+import { createNotificationsService } from "./services/notifications.service.js";
+import { createNotificationsRepository } from "./repositories/notifications.repository.js";
+import { createRetentionJob } from "./jobs/retention.js";
+import { createScheduler } from "./jobs/scheduler.js";
 import { createNotifier } from "./services/notifier.js";
 import { createAddressesService } from "./services/addresses.service.js";
 import { createCartService } from "./services/cart.service.js";
@@ -26,6 +36,17 @@ import { createProductsService } from "./services/products.service.js";
 import { createWishlistService } from "./services/wishlist.service.js";
 import { createSearchService } from "./services/search.service.js";
 import { createUsersService } from "./services/users.service.js";
+import { createStorageService } from "./services/storage.service.js";
+import { createPaymentsService } from "./services/payments.service.js";
+import { createPrescriptionsService } from "./services/prescriptions.service.js";
+import { createSellersService } from "./services/sellers.service.js";
+import { createSellerApplicationsService } from "./services/sellerApplications.service.js";
+import { createDeliveryService } from "./services/delivery.service.js";
+import { createSellerPayoutsService } from "./services/sellerPayouts.service.js";
+import { createCodProvider } from "./services/payments/cod.provider.js";
+import { createManualProvider } from "./services/payments/manual.provider.js";
+import { createDeliveryCodes } from "./utils/deliveryCode.js";
+import { createEncryption } from "./utils/encryption.js";
 import { createLogger } from "./utils/logger.js";
 import { createPasswordHasher } from "./utils/password.js";
 import { createTokenService } from "./utils/tokens.js";
@@ -52,13 +73,23 @@ export function createContainer(config, overrides = {}) {
     orders: createOrdersRepository(),
     wishlist: createWishlistRepository(),
     purchasing: createPurchasingRepository(),
+    payments: createPaymentsRepository(),
+    prescriptions: createPrescriptionsRepository(),
+    sellers: createSellersRepository(),
+    sellerApplications: createSellerApplicationsRepository(),
+    sellerPayouts: createSellerPayoutsRepository(),
+    delivery: createDeliveryRepository(),
+    notifications: createNotificationsRepository(),
   };
   const tokens = createTokenService({ secret: config.auth.jwtSecret, ttlSeconds: config.auth.accessTtlSeconds });
-  const notifier = createNotifier({ driver: config.notify.driver, logger, twilio: config.notify.twilio });
+  const notifier = createNotifier({ driver: config.notify.driver, logger, webhookUrl: config.notify.webhookUrl, webhookSecret: config.notify.webhookSecret, timeoutMs: config.notify.timeoutMs });
   const audit = createAuditService({ repo: repos.audit, pool });
 
+  // External (email/SMS) messages are only queued when a real channel exists — with "disabled" they would just retry and die.
+  const notifications = createNotificationsService({ pool, repo: repos.notifications, notifier, logger, externalEnabled: config.notify.driver !== "disabled" });
   const services = {
     audit,
+    notifications,
     auth: createAuthService({ config, pool, withTx, repos, hasher: createPasswordHasher(), tokens, notifier, audit }),
     users: createUsersService({ pool, withTx, repos, audit }),
     catalog: createCatalogService({ pool, withTx, repos, audit }),
@@ -70,9 +101,34 @@ export function createContainer(config, overrides = {}) {
   const coupons = createCouponsService({ repos });
   const pricing = createPricingService({ repos, coupons });
   services.cart = createCartService({ pool, repos, pricing });
-  services.orders = createOrdersService({ pool, withTx, repos, pricing, audit });
   services.inventory = createInventoryService({ pool, withTx, repos, audit });
   services.purchasing = createPurchasingService({ pool, withTx, repos, audit });
 
-  return { config, logger, pool, withTx, repos, tokens, services };
+  const storage = createStorageService(config);
+  const paymentProviders = {
+    cod: createCodProvider(),
+    manual: createManualProvider({ webhookSecret: config.payments.manualWebhookSecret }),
+  };
+  services.payments = createPaymentsService({ pool, withTx, repos, providers: paymentProviders, audit, notifications });
+  services.prescriptions = createPrescriptionsService({ pool, withTx, repos, storage, audit, notifications });
+  // The handover code is derived from a subkey of DATA_ENCRYPTION_KEY, never stored (utils/deliveryCode.js).
+  const deliveryCodes = createDeliveryCodes(config.security.dataEncryptionKey);
+  services.orders = createOrdersService({ pool, withTx, repos, pricing, audit, prescriptions: services.prescriptions, payments: services.payments, codes: deliveryCodes, notifications });
+  services.delivery = createDeliveryService({ pool, withTx, repos, audit, payments: services.payments, codes: deliveryCodes, notifications });
+
+  const encryption = createEncryption(config.security.dataEncryptionKey);
+  services.sellers = createSellersService({ pool, withTx, repos, encryption, audit });
+  services.sellerApplications = createSellerApplicationsService({ pool, withTx, repos, storage, encryption, audit, notifications });
+  services.sellerPayouts = createSellerPayoutsService({ pool, withTx, repos, audit, notifications });
+
+  // Background jobs: started by server.js (not here, so tests and scripts that build a container don't spawn timers).
+  const scheduler = createScheduler({
+    logger,
+    jobs: [
+      { name: "outbox", everyMs: 10_000, run: () => notifications.processOutbox() },
+      { name: "retention", everyMs: 6 * 60 * 60_000, runOnStart: true, run: () => createRetentionJob({ pool, logger }).run() },
+    ],
+  });
+
+  return { config, logger, pool, withTx, repos, tokens, services, storage, paymentProviders, encryption, scheduler };
 }

@@ -5,8 +5,11 @@ import { normTerm, slugify } from "../utils/text.js";
 const MANAGE = "catalog:write";
 const PUBLIC_STATUSES = ["active"];
 const ALL_STATUSES = ["active", "inactive", "pending_review", "rejected", "draft"];
+const SELLER_TOGGLABLE_STATUSES = ["active", "inactive"]; // a seller may flip between these on their own listing; only staff can move it out of pending_review/rejected
 
 const can = (actor, perm) => !!actor?.permissions?.includes(perm);
+/** A seller managing only their own catalogue — `catalog:write` (staff) always takes precedence. */
+const isSellerOnly = (actor) => !can(actor, MANAGE) && can(actor, "catalog:write_own");
 
 /** Postgres unique-violation -> a specific 409 the form can show against the right field. */
 function mapUniqueViolation(err) {
@@ -99,8 +102,11 @@ export function createProductsService({ pool, withTx, repos, audit }) {
     /** Paginated, filtered, ranked listing. Anonymous/customers only ever see active products. */
     async list(query, actor) {
       const manage = can(actor, MANAGE);
+      // A shop owner may widen the status filter for their OWN listings only (pending_review, inactive, rejected…) —
+      // asking for any other shop's non-active products just gets the public view, exactly like a customer.
+      const ownScope = !!actor?.sellerId && query.sellerId === actor.sellerId && can(actor, "catalog:write_own");
       let statuses = PUBLIC_STATUSES;
-      if (manage && query.status) statuses = query.status === "any" ? ALL_STATUSES : query.status.split(",").filter((s) => ALL_STATUSES.includes(s));
+      if ((manage || ownScope) && query.status) statuses = query.status === "any" ? ALL_STATUSES : query.status.split(",").filter((s) => ALL_STATUSES.includes(s));
       if (query.sellerId && !manage && !can(actor, "seller:manage_own")) throw forbidden();
 
       const attrs = {};
@@ -122,13 +128,18 @@ export function createProductsService({ pool, withTx, repos, audit }) {
 
     async get(id, actor) {
       const row = await products.getById(pool, id);
-      if (!row || (row.status !== "active" && !can(actor, MANAGE))) throw notFound("PRODUCT_NOT_FOUND", "Product not found");
+      const ownedByActor = row && actor?.sellerId && row.seller_id === actor.sellerId;
+      if (!row || (row.status !== "active" && !can(actor, MANAGE) && !ownedByActor)) throw notFound("PRODUCT_NOT_FOUND", "Product not found");
       return load(pool, row, actor);
     },
 
     async create(actor, body, ctx) {
       try {
         return await withTx(async (db) => {
+          if (isSellerOnly(actor)) {
+            if (!actor.sellerId) throw forbidden("NO_SHOP", "You need an active shop before you can list products");
+            body = { ...body, sellerId: actor.sellerId, status: "pending_review" }; // a seller can never self-approve a new listing
+          }
           await checkCommon(db, body);
           await checkOpeningStock(db, actor, body);
           const brandId = await resolveBrand(db, body);
@@ -161,6 +172,14 @@ export function createProductsService({ pool, withTx, repos, audit }) {
         return await withTx(async (db) => {
           const before = await products.getById(db, id, { forUpdate: true });
           if (!before) throw notFound("PRODUCT_NOT_FOUND", "Product not found");
+          if (isSellerOnly(actor)) {
+            if (before.seller_id !== actor.sellerId) throw notFound("PRODUCT_NOT_FOUND", "Product not found"); // not theirs — 404, not 403, so a seller can't probe other shops' catalogue
+            // A seller may flip an already-approved listing between active/inactive themselves, but can never
+            // move it out of pending_review/rejected, or into either of those — that's staff-only moderation.
+            const requestedStatus = body.status;
+            const selfServeToggle = SELLER_TOGGLABLE_STATUSES.includes(before.status) && SELLER_TOGGLABLE_STATUSES.includes(requestedStatus);
+            body = { ...body, status: selfServeToggle ? requestedStatus : before.status };
+          }
           if (body.version != null && body.version !== before.version) throw conflict("STALE_PRODUCT", "This product was changed by someone else. Reload and try again.");
           await checkCommon(db, body);
           const brandId = await resolveBrand(db, { ...body, brandId: body.brandId ?? (body.brandName ? undefined : before.brand_id) });
@@ -208,6 +227,7 @@ export function createProductsService({ pool, withTx, repos, audit }) {
       return withTx(async (db) => {
         const before = await products.getById(db, id, { forUpdate: true });
         if (!before) throw notFound("PRODUCT_NOT_FOUND", "Product not found");
+        if (isSellerOnly(actor) && before.seller_id !== actor.sellerId) throw notFound("PRODUCT_NOT_FOUND", "Product not found");
         const dto = await load(db, before, actor);
         await products.softDelete(db, id);
         await audit.log({ actor, action: "product.deleted", entityType: "product", entityId: id, oldValue: productAuditView(dto) }, ctx, db);

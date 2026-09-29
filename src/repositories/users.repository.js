@@ -6,7 +6,8 @@ const ACCESS_SELECT = `
   SELECT u.id, u.full_name, u.email, u.mobile, u.status, u.legacy_id, u.is_demo,
          u.email_verified_at, u.mobile_verified_at, u.last_login_at, u.created_at,
          COALESCE(array_agg(DISTINCT ur.role_key) FILTER (WHERE ur.role_key IS NOT NULL), '{}') AS roles,
-         COALESCE(array_agg(DISTINCT rp.permission_key) FILTER (WHERE rp.permission_key IS NOT NULL), '{}') AS permissions
+         COALESCE(array_agg(DISTINCT rp.permission_key) FILTER (WHERE rp.permission_key IS NOT NULL), '{}') AS permissions,
+         (SELECT se.id FROM sellers se WHERE se.owner_user_id = u.id LIMIT 1) AS seller_id
     FROM users u
     LEFT JOIN user_roles ur ON ur.user_id = u.id
     LEFT JOIN role_permissions rp ON rp.role_key = ur.role_key`;

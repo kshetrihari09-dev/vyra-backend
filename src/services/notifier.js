@@ -1,46 +1,48 @@
+import { createHmac } from "node:crypto";
 import { unavailable } from "../utils/errors.js";
 
 /**
- * Delivery channel abstraction for OTPs and reset links. Phase 8 (notifications) plugs real email / SMS /
- * push providers in behind this same interface — auth code never needs to change.
+ * Delivery channel abstraction for OTPs, reset links and outbox messages. Drivers: console (dev only — logs the
+ * message), disabled (refuses), webhook (signed POST to your SMS/email gateway).
  *
  *   sendSms({ to, text })
  *   sendEmail({ to, subject, text })
  */
-export function createNotifier({ driver, logger, twilio }) {
+export function createNotifier({ driver, logger, webhookUrl, webhookSecret, timeoutMs = 8000, fetchImpl = globalThis.fetch, clock = () => Date.now() }) {
+  if (driver === "webhook") {
+    /**
+     * POSTs {channel, to, subject?, text} as JSON to the gateway. The body is signed so the gateway can trust it:
+     *   X-Vyra-Timestamp: <unix ms>      X-Vyra-Signature: sha256=HMAC(secret, `${timestamp}.${rawBody}`)
+     * (the timestamp is inside the signature so a captured request can't be replayed later — verify it is recent).
+     * Non-2xx or a timeout throws; the outbox worker retries. The error text never contains the URL or the message.
+     */
+    const post = async (payload) => {
+      const body = JSON.stringify(payload);
+      const ts = String(clock());
+      const signature = createHmac("sha256", webhookSecret).update(`${ts}.${body}`).digest("hex");
+      let res;
+      try {
+        res = await fetchImpl(webhookUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-vyra-timestamp": ts, "x-vyra-signature": `sha256=${signature}` },
+          body, signal: AbortSignal.timeout(timeoutMs), redirect: "error",
+        });
+      } catch (err) {
+        throw new Error(err?.name === "TimeoutError" ? "notification gateway timed out" : "notification gateway unreachable");
+      }
+      if (!res.ok) throw new Error(`notification gateway responded ${res.status}`);
+    };
+    return {
+      sendSms: ({ to, text }) => post({ channel: "sms", to, text }),
+      sendEmail: ({ to, subject, text }) => post({ channel: "email", to, subject, text }),
+    };
+  }
   if (driver === "console") {
     return {
       async sendSms({ to, text }) { logger.info("[notify:console] sms", { to, text }); },
       async sendEmail({ to, subject, text }) { logger.info("[notify:console] email", { to, subject, text }); },
     };
   }
-
-  if (driver === "twilio") {
-    const authHeader = "Basic " + Buffer.from(`${twilio.accountSid}:${twilio.authToken}`).toString("base64");
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${twilio.accountSid}/Messages.json`;
-
-    const sendSms = async ({ to, text }) => {
-      const body = new URLSearchParams({ To: to, From: twilio.fromNumber, Body: text });
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { Authorization: authHeader, "Content-Type": "application/x-www-form-urlencoded" },
-        body,
-      });
-      if (!res.ok) {
-        const detail = await res.text().catch(() => "");
-        logger.error("[notify:twilio] sms failed", { to, status: res.status, detail });
-        throw unavailable("NOTIFIER_SEND_FAILED", "Could not send the verification code. Please try again.");
-      }
-      logger.info("[notify:twilio] sms sent", { to });
-    };
-
-    // Twilio's SMS-only setup has no email leg; email OTP/reset falls back to a hard refusal
-    // until an email provider (SES, Postmark, etc.) is wired in the same way.
-    const refuseEmail = async () => { throw unavailable("NOTIFIER_UNAVAILABLE", "Email delivery is not configured on this server yet."); };
-
-    return { sendSms, sendEmail: refuseEmail };
-  }
-
   const refuse = async () => { throw unavailable("NOTIFIER_UNAVAILABLE", "Messaging is not configured on this server yet."); };
   return { sendSms: refuse, sendEmail: refuse };
 }

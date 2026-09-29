@@ -82,6 +82,7 @@ export function createAuthService({ config, pool, withTx, repos, hasher, tokens,
         await users.createCustomerProfile(db, userId);
         await roles.addUserRole(db, userId, "customer", null);
         await sessions.consumeOtpChallenge(db, challengeId);
+        await audit.log({ actorLabel: "user (self-registration)", action: "auth.registered", entityType: "user", entityId: userId, newValue: { mobileVerified: true } }, ctx, db);
         const session = await issueSession(db, userId, ctx);
         return { userId, session, user: await loadUserDto(db, userId) };
       });
