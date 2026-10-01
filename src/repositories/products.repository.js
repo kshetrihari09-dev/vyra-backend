@@ -216,6 +216,21 @@ export function createProductsRepository() {
       return rows[0] || null;
     },
 
+    /** Photo rows for one product, in display order. */
+    async listImages(db, productId) {
+      return (await db.query("SELECT storage_key, alt_text FROM product_images WHERE product_id = $1 ORDER BY sort_order", [productId])).rows;
+    },
+    /** Replaces a product's photo list (first = primary). Delete-then-insert inside the caller's transaction. */
+    async replaceImages(db, productId, rows) {
+      await db.query("DELETE FROM product_images WHERE product_id = $1", [productId]);
+      for (let i = 0; i < rows.length; i++) {
+        await db.query("INSERT INTO product_images (product_id, storage_key, alt_text, sort_order, is_primary) VALUES ($1, $2, $3, $4, $5)", [productId, rows[i].key, rows[i].alt ?? null, i, i === 0]);
+      }
+    },
+    async imageExists(db, key) {
+      return (await db.query("SELECT 1 FROM product_images WHERE storage_key = $1 LIMIT 1", [key])).rows.length > 0;
+    },
+
     async softDelete(db, id) {
       const { rowCount } = await db.query("UPDATE products SET deleted_at = now(), status = 'inactive' WHERE id = $1 AND deleted_at IS NULL", [id]);
       return rowCount > 0;

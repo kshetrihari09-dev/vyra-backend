@@ -18,6 +18,13 @@ export function createCatalogController({ services }) {
     async getProduct(req, res) { ok(res, { product: await products.get(req.valid.params.id, req.auth?.user) }); },
     async createProduct(req, res) { ok(res, { product: await products.create(req.auth.user, req.valid.body, clientContext(req)) }, 201); },
     async updateProduct(req, res) { ok(res, { product: await products.update(req.auth.user, req.valid.params.id, req.valid.body, clientContext(req)) }); },
+    async setProductImages(req, res) { ok(res, { product: await products.setImages(req.auth.user, req.valid.params.id, req.valid.body.images, clientContext(req)) }); },
+    async productImage(req, res) {
+      const file = await products.imageFile(req.valid.params.key);
+      // helmet's default is same-origin, which would block the storefront (a different origin on Vercel) from showing these.
+      res.set({ "Content-Type": file.mime, "Cache-Control": "public, max-age=31536000, immutable", "Cross-Origin-Resource-Policy": "cross-origin", "X-Content-Type-Options": "nosniff" });
+      res.send(file.buffer);
+    },
     async deleteProduct(req, res) { ok(res, await products.remove(req.auth.user, req.valid.params.id, clientContext(req))); },
 
     // search

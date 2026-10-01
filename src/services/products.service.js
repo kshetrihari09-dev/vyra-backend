@@ -1,6 +1,7 @@
 import { productAuditView, toProductDto } from "../models/catalog.model.js";
 import { badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
 import { normTerm, slugify } from "../utils/text.js";
+import { randomUUID } from "node:crypto";
 
 const MANAGE = "catalog:write";
 const PUBLIC_STATUSES = ["active"];
@@ -26,7 +27,11 @@ function mapUniqueViolation(err) {
   return hit ? conflict(hit[0], hit[2], [{ path: `body.${hit[1]}`, message: hit[2] }]) : err;
 }
 
-export function createProductsService({ pool, withTx, repos, audit }) {
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const MIME_EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+const EXT_MIME = { jpg: "image/jpeg", png: "image/png", webp: "image/webp" };
+
+export function createProductsService({ pool, withTx, repos, audit, storage }) {
   const { products, catalog, inventory } = repos;
 
   /** Resolves the attribute schema a category declares (inherited from ancestors when the child has none). */
@@ -233,6 +238,51 @@ export function createProductsService({ pool, withTx, repos, audit }) {
     },
 
     /** Soft delete: the row stays so orders, stock history and audit entries keep resolving. */
+    /** Replaces the product's photo list. Entries are existing storage keys (kept) or new data URLs (stored). */
+    async setImages(actor, id, images, ctx) {
+      const written = [];
+      let removed = [];
+      try {
+        const dto = await withTx(async (db) => {
+          const row = await products.getById(db, id, { forUpdate: true });
+          if (!row) throw notFound("PRODUCT_NOT_FOUND", "Product not found");
+          if (!can(actor, MANAGE)) {
+            if (!can(actor, "catalog:write_own") || !actor.sellerId || row.seller_id !== actor.sellerId) throw notFound("PRODUCT_NOT_FOUND", "Product not found");
+          }
+          const current = (await products.listImages(db, id)).map((r) => r.storage_key);
+          const rows = [];
+          for (const entry of images) {
+            if (current.includes(entry)) { rows.push({ key: entry, alt: row.name }); continue; }
+            const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(entry);
+            if (!m) throw badRequest("INVALID_IMAGE", "That image isn't one of this product's photos");
+            const buffer = Buffer.from(m[2], "base64");
+            if (!buffer.length || buffer.length > MAX_IMAGE_BYTES) throw badRequest("INVALID_IMAGE", "Each image must be under 2 MB");
+            const key = `${randomUUID()}.${MIME_EXT[m[1]]}`;
+            await storage.putObject(key, buffer);
+            written.push(key);
+            rows.push({ key, alt: row.name });
+          }
+          await products.replaceImages(db, id, rows);
+          removed = current.filter((k) => !rows.some((r) => r.key === k));
+          await audit.log({ actor, action: "product.images_updated", entityType: "product", entityId: id, newValue: { count: rows.length } }, ctx, db);
+          return load(db, row, actor);
+        });
+        for (const k of removed) await storage.deleteObject(k).catch(() => {}); // best effort — an orphan file is harmless
+        return dto;
+      } catch (err) {
+        for (const k of written) await storage.deleteObject(k).catch(() => {}); // transaction rolled back: don't leave the new files behind
+        throw err;
+      }
+    },
+
+    /** Bytes of one public product photo; 404 unless the key belongs to a product. */
+    async imageFile(key) {
+      if (!(await products.imageExists(pool, key))) throw notFound("IMAGE_NOT_FOUND", "Image not found");
+      let buffer;
+      try { buffer = await storage.getObject(key); } catch { throw notFound("IMAGE_NOT_FOUND", "Image not found"); }
+      return { buffer, mime: EXT_MIME[key.split(".").pop()] || "application/octet-stream" };
+    },
+
     async remove(actor, id, ctx) {
       return withTx(async (db) => {
         const before = await products.getById(db, id, { forUpdate: true });

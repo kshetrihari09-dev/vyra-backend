@@ -33,11 +33,15 @@ export function catalogRoutes({ container, controller }) {
   r.get("/search/lookup", maybe, validate({ query: v.lookupQuery }), controller.lookup);
   r.get("/products/facets", validate({ query: v.facetsQuery }), controller.facets);
 
+  // Public photo files. Keys are random UUIDs and only keys present in product_images are served (prescription files never are).
+  r.get("/product-images/:key", validate({ params: v.imageKeyParams }), controller.productImage);
+
   // products
   r.get("/products", maybe, validate({ query: v.listProductsQuery }), controller.listProducts);
   r.get("/products/:id", maybe, validate({ params: v.idParams }), controller.getProduct);
   r.post("/products", authed, writeProduct, validate({ body: v.createProductBody }), controller.createProduct);
   r.put("/products/:id", authed, writeProduct, validate({ params: v.idParams, body: v.updateProductBody }), controller.updateProduct);
+  r.put("/products/:id/images", authed, writeProduct, validate({ params: v.idParams, body: v.setImagesBody }), controller.setProductImages);
   r.delete("/products/:id", authed, writeProduct, validate({ params: v.idParams }), controller.deleteProduct);
   return r;
 }

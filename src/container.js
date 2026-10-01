@@ -93,7 +93,6 @@ export function createContainer(config, overrides = {}) {
     auth: createAuthService({ config, pool, withTx, repos, hasher: createPasswordHasher(), tokens, notifier, audit }),
     users: createUsersService({ pool, withTx, repos, audit }),
     catalog: createCatalogService({ pool, withTx, repos, audit }),
-    products: createProductsService({ pool, withTx, repos, audit }),
     search: createSearchService({ pool, repos }),
     addresses: createAddressesService({ pool, withTx, repos }),
     wishlist: createWishlistService({ pool, repos }),
@@ -105,6 +104,7 @@ export function createContainer(config, overrides = {}) {
   services.purchasing = createPurchasingService({ pool, withTx, repos, audit });
 
   const storage = createStorageService(config);
+  services.products = createProductsService({ pool, withTx, repos, audit, storage });
   const paymentProviders = {
     cod: createCodProvider(),
     manual: createManualProvider({ webhookSecret: config.payments.manualWebhookSecret }),

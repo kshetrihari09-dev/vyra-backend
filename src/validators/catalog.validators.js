@@ -43,6 +43,13 @@ export const brandBody = z.object({
   status: z.enum(["active", "inactive"]).default("active"),
 });
 
+/* Photos: each entry is either a NEW upload (a data URL) or a photo the product already has (its storage key). */
+export const IMAGE_KEY_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp)$/;
+export const setImagesBody = z.object({
+  images: z.array(z.string().max(2_000_000).refine((s) => IMAGE_KEY_RE.test(s) || /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(s), "Use a JPG, PNG or WebP image")).max(5, "Up to 5 images"),
+});
+export const imageKeyParams = z.object({ key: z.string().regex(IMAGE_KEY_RE, "Invalid image") });
+
 export const idParams = z.object({ id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,80}$/, "Invalid id") });
 export const includeInactiveQuery = z.object({ includeInactive: flag.optional() });
 
