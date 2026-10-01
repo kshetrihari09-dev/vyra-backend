@@ -1,6 +1,6 @@
 /** Demo coupons, matching the prototype's data/promotions.js COUPONS so the codes shoppers know still work. */
 const COUPONS = [
-  { code: "NOVA10", label: "10% off orders over $20", type: "percent", value: 10, maxDiscount: 15, minOrder: 20, scopeType: "all" },
+  { code: "NOVA10", label: "10% off orders over Rs. 20", type: "percent", value: 10, maxDiscount: 15, minOrder: 20, scopeType: "all" },
   { code: "FRESH25", label: "25% off Grocery", type: "percent", value: 25, maxDiscount: 20, minOrder: 30, scopeType: "category", scopeId: "grocery" },
   { code: "FLAT5", label: "$5 off orders over $25", type: "fixed", value: 5, minOrder: 25, scopeType: "all" },
   { code: "FIRST15", label: "15% off your first order", type: "percent", value: 15, maxDiscount: 25, minOrder: 0, firstOrderOnly: true, scopeType: "all" },

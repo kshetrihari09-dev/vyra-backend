@@ -15,5 +15,7 @@ export const toNumber = (v) => (v === null || v === undefined ? null : Math.roun
 /** Rounds to 2 decimal places — the money-math convention used throughout pricing/orders. */
 export const round2 = (n) => Math.round(n * 100) / 100;
 
-/** Display money the way the storefront does ("$12.50"). Used in notification text only; stored amounts stay numeric. */
-export const money = (n) => `$${Number(n || 0).toFixed(2)}`;
+/** Nepali rupee — keep in step with CURRENCY in the frontend's utils/format.js. */
+export const CURRENCY = "Rs.";
+/** Display money the way the storefront does ("Rs. 1,250.00"). Used in notification text only; stored amounts stay numeric. */
+export const money = (n) => `${CURRENCY} ${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

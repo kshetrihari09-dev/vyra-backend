@@ -117,7 +117,7 @@ export function createPaymentsService({ pool, withTx, repos, providers, audit, n
         const already = Number(payment.refunded_amount);
         const cap = Number(payment.amount) - already;
         const amount = body.amount != null ? Number(body.amount) : cap;
-        if (amount <= 0 || amount > cap) throw badRequest("INVALID_AMOUNT", `Amount must be between 0 and ${cap.toFixed(2)}`);
+        if (amount <= 0 || amount > cap) throw badRequest("INVALID_AMOUNT", `Amount must be between Rs. 0 and Rs. ${cap.toFixed(2)}`);
 
         const refund = await repo.insertRefund(db, { paymentId: payment.id, orderId, amount, reason: body.reason, requestedBy: actor.id });
         await audit.log({ actor, action: "refund.requested", entityType: "refund", entityId: refund.id, newValue: { orderId, amount, reason: body.reason } }, ctx, db);

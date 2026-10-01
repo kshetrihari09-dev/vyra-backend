@@ -46,7 +46,7 @@ describe("emit", () => {
     const row = await e.svc.emit({}, { userId: "u-alice", type: "order.placed", data: { orderId: "o1", number: "PN-1", total: 5, secret: "x" } });
     assert.equal(row.title, "Order placed");
     assert.deepEqual(row.data, { orderId: "o1" });
-    assert.match(row.message, /PN-1.*\$5\.00/);
+    assert.match(row.message, /PN-1.*Rs\. 5\.00/);
   });
   it("queues email for email-enabled types only, respecting the user's opt-outs and missing addresses", async () => {
     const e = setup();

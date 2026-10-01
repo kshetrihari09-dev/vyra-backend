@@ -22,7 +22,7 @@ export function createSellerPayoutsService({ pool, withTx, repos, audit, notific
         const available = await repos.sellers.availableBalance(db, sellerId);
         const amount = body.amount != null ? Number(body.amount) : available;
         if (amount <= 0) throw badRequest("NOTHING_AVAILABLE", "There's no available balance to pay out");
-        if (amount > available) throw badRequest("EXCEEDS_AVAILABLE", `Amount must be between 0 and ${available.toFixed(2)}`);
+        if (amount > available) throw badRequest("EXCEEDS_AVAILABLE", `Amount must be between Rs. 0 and Rs. ${available.toFixed(2)}`);
         const row = await repo.insert(db, { sellerId, amount, methodLabel: seller.payout_method_label, note: body.note, requestedBy: actor.id });
         await audit.log({ actor, action: "seller_payout.requested", entityType: "seller_payout", entityId: row.id, newValue: { sellerId, amount } }, ctx, db);
         return toPayoutDto(row);

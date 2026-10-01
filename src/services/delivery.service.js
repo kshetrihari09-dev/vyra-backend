@@ -192,7 +192,7 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
 
         const cod = order.payment_method === "cod" && order.payment_status !== "paid";
         if (cod && (body.cashCollected == null || cents(body.cashCollected) !== cents(order.total))) {
-          throw badRequest("CASH_MISMATCH", `Collect exactly ${Number(order.total).toFixed(2)} in cash before completing.`, [{ path: "body.cashCollected", message: "Cash collected must equal the order total" }]);
+          throw badRequest("CASH_MISMATCH", `Collect exactly Rs. ${Number(order.total).toFixed(2)} in cash before completing.`, [{ path: "body.cashCollected", message: "Cash collected must equal the order total" }]);
         }
 
         const now = clock();
