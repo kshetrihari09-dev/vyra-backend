@@ -27,7 +27,7 @@ function mapUniqueViolation(err) {
 }
 
 export function createProductsService({ pool, withTx, repos, audit }) {
-  const { products, catalog } = repos;
+  const { products, catalog, inventory } = repos;
 
   /** Resolves the attribute schema a category declares (inherited from ancestors when the child has none). */
   async function schemaFor(db, categoryId) {
@@ -83,14 +83,24 @@ export function createProductsService({ pool, withTx, repos, audit }) {
   async function checkOpeningStock(db, actor, body) {
     const maps = [body.openingStock, ...(body.variants || []).map((v) => v.openingStock)].filter(Boolean);
     if (!maps.length) return;
-    if (!can(actor, "inventory:adjust")) throw forbidden("FORBIDDEN", "You cannot set opening stock");
+    // Staff need inventory:adjust. A shop owner may also set the opening stock of the new listing they are creating:
+    // this runs on create only (create() has already pinned sellerId to their shop and forced pending_review), and
+    // every later stock change still goes through the inventory API and its permissions.
+    if (!can(actor, "inventory:adjust") && !isSellerOnly(actor)) throw forbidden("FORBIDDEN", "You cannot set opening stock");
     const branches = new Set(await products.branchIds(db));
     for (const m of maps) for (const b of Object.keys(m)) if (!branches.has(b)) throw badRequest("BRANCH_NOT_FOUND", `Unknown branch "${b}"`);
   }
 
-  async function writeOpeningStock(db, productId, body) {
-    for (const [branchId, qty] of Object.entries(body.openingStock || {})) if (qty > 0) await products.setOpeningStock(db, { branchId, productId, qty });
-    for (const v of body.variants || []) for (const [branchId, qty] of Object.entries(v.openingStock || {})) if (qty > 0) await products.setOpeningStock(db, { branchId, productId, variantId: v.id, qty });
+  /** Sets each branch's starting on-hand ONCE (create only; edit never calls this) and logs it in the movements ledger like any
+   *  other stock change, so history and on-hand agree. A brand-new product has no stock yet, hence prev_qty 0. Zero/empty adds nothing. */
+  async function writeOpeningStock(db, actor, productId, body) {
+    const put = async (branchId, qty, variantId = null) => {
+      if (!(qty > 0)) return;
+      await products.setOpeningStock(db, { branchId, productId, variantId, qty });
+      await inventory.recordMovement(db, { branchId, productId, variantId, delta: qty, prevQty: 0, newQty: qty, reason: "Opening stock", refType: "adjustment", actorId: actor?.id ?? null });
+    };
+    for (const [branchId, qty] of Object.entries(body.openingStock || {})) await put(branchId, qty);
+    for (const v of body.variants || []) for (const [branchId, qty] of Object.entries(v.openingStock || {})) await put(branchId, qty, v.id);
   }
 
   async function load(db, row, actor) {
@@ -154,7 +164,7 @@ export function createProductsService({ pool, withTx, repos, audit }) {
 
           const row = await products.insert(db, { ...body, id, slug, brandId });
           for (const [i, v] of (body.variants || []).entries()) await products.upsertVariant(db, id, v, i);
-          await writeOpeningStock(db, id, body);
+          await writeOpeningStock(db, actor, id, body);
           const dto = await load(db, row, actor);
           await audit.log({ actor, action: "product.created", entityType: "product", entityId: id, newValue: productAuditView(dto) }, ctx, db);
           if (body.openingStock || (body.variants || []).some((v) => v.openingStock)) {

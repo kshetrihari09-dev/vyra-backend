@@ -70,6 +70,26 @@ describe("product creation", () => {
     assert.ok(e.audit.entries.some((x) => x.action === "inventory.opening_stock"));
   });
 
+  it("opening stock is applied exactly once and logged in the movements ledger; zero/empty adds nothing", async () => {
+    const p = await e.service.create(adminActor, { ...base, openingStock: { "store-01": 20 } }, ctx);
+    assert.deepEqual(p.stock, { "store-01": 20 });
+    assert.equal(e.db.inventory.filter((r) => r.product_id === p.id).length, 1, "one inventory row, not two");
+    assert.deepEqual(e.db.movements.map((m) => [m.productId, m.branchId, m.delta, m.prevQty, m.newQty, m.reason, m.refType]), [[p.id, "store-01", 20, 0, 20, "Opening stock", "adjustment"]]);
+
+    const zero = await e.service.create(adminActor, { ...base, name: "Zero", sku: "Z-0", openingStock: { "store-01": 0 } }, ctx);
+    const none = await e.service.create(adminActor, { ...base, name: "None", sku: "N-0" }, ctx);
+    assert.deepEqual([zero.stock, none.stock], [{}, {}]);
+    assert.equal(e.db.inventory.length, 1);
+    assert.equal(e.db.movements.length, 1, "no ledger noise for 0 / empty");
+  });
+
+  it("editing a product never re-applies or changes its opening stock", async () => {
+    const p = await e.service.create(adminActor, { ...base, openingStock: { "store-01": 20 } }, ctx);
+    const after = await e.service.update(adminActor, p.id, { ...base, id: p.id, version: p.version, openingStock: { "store-01": 99 }, name: "Renamed" }, ctx);
+    assert.deepEqual(after.stock, { "store-01": 20 });
+    assert.equal(e.db.movements.length, 1);
+  });
+
   it("the client can't smuggle server-owned fields (rating, sold, stock, batches) through create", async () => {
     // The validator strips them; the service never reads them either.
     const p = await e.service.create(adminActor, { ...base, rating: 5, sold: 9999, stock: { "store-01": 500 }, batches: [{ batch: "X" }] }, ctx);
@@ -151,6 +171,17 @@ describe("visibility", () => {
 // Phase 6: a seller (catalog:write_own) manages only their own catalogue, and a new listing always starts
 // out unapproved — this is what makes the marketplace's product moderation actually mean something.
 describe("seller-scoped catalogue (decision: sellers can't self-approve)", () => {
+  it("a seller can set the opening stock of the NEW listing they create (recorded once, in the ledger); nobody else without inventory:adjust can", async () => {
+    const e = setup();
+    const p = await e.service.create(sellerActor, { ...base, sku: "SEL-OPEN", openingStock: { "store-01": 10 } }, ctx);
+    assert.equal(p.status, "pending_review");
+    assert.deepEqual(p.stock, { "store-01": 10 });
+    assert.equal(e.db.movements.length, 1);
+    assert.equal(e.db.movements[0].actorId, sellerActor.id);
+    await assert.rejects(e.service.create(sellerActor, { ...base, sku: "SEL-BAD", openingStock: { "store-99": 1 } }, ctx), { code: "BRANCH_NOT_FOUND" });
+    await assert.rejects(e.service.create({ id: "u", permissions: [] }, { ...base, sku: "X-1", openingStock: { "store-01": 5 } }, ctx), { status: 403 });
+  });
+
   it("forces a new listing's sellerId to the caller's own shop, and its status to pending_review regardless of what's submitted", async () => {
     const e = setup();
     const p = await e.service.create(sellerActor, { ...base, sku: "SEL-1", sellerId: "someone-else", status: "active" }, ctx);

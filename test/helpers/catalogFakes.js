@@ -9,7 +9,7 @@ export function createFakeCatalog() {
         attributes: [{ key: "weight", label: "Weight", type: "text" }] },
     ],
     brands: [{ id: "cipla", name: "Cipla", status: "active" }],
-    products: [], variants: [], inventory: [], branches: ["store-01", "store-02"],
+    products: [], variants: [], inventory: [], movements: [], branches: ["store-01", "store-02"],
   };
   let version = 0;
 
@@ -70,7 +70,8 @@ export function createFakeCatalog() {
     /** Records how search() was called; returns the rows the test preloaded. */
     async search(_d, f) { products.lastSearch = f; return { rows: db.products.filter((p) => !p.deleted_at && f.statuses.includes(p.status)), total: db.products.length }; },
   };
-  return { db, repos: { catalog, products } };
+  const inventory = { async recordMovement(_d, m) { const row = { ...m, branch_id: m.branchId, product_id: m.productId, variant_id: m.variantId ?? null }; db.movements.push(row); return row; } };
+  return { db, repos: { catalog, products, inventory } };
 }
 
 export const adminActor = { id: "u-admin", name: "Admin", roles: ["admin"], permissions: ["catalog:write", "catalog:price", "inventory:adjust", "inventory:read"] };
