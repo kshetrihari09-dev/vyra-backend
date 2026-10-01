@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, requirePermission } from "../middleware/authenticate.js";
+import { authenticate, requireAnyPermission, requirePermission } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
 import * as v from "../validators/inventory.validators.js";
 
@@ -10,7 +10,8 @@ export function inventoryRoutes({ container, controller }) {
   const authed = authenticate(container);
   const write = requirePermission("inventory:adjust");
 
-  r.post("/inventory/adjust", authed, write, validate({ body: v.adjustBody }), controller.adjust);
+  // Shop owners adjust stock on their own listings only — the service enforces ownership.
+  r.post("/inventory/adjust", authed, requireAnyPermission("inventory:adjust", "catalog:write_own"), validate({ body: v.adjustBody }), controller.adjust);
   r.post("/inventory/transfer", authed, write, validate({ body: v.transferBody }), controller.transfer);
   r.get("/inventory/movements", authed, write, validate({ query: v.movementsQuery }), controller.movements);
   r.get("/inventory/low-stock", authed, write, validate({ query: v.lowStockQuery }), controller.lowStock);

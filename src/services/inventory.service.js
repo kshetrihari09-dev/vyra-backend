@@ -1,5 +1,5 @@
 import { toMovementDto } from "../models/inventory.model.js";
-import { badRequest, conflict, notFound } from "../utils/errors.js";
+import { badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
 
 /** Manual stock changes: adjustments, branch-to-branch transfers, the movements ledger, and the low-stock report.
     Everything here needs inventory:adjust except the read-only reports. */
@@ -11,6 +11,10 @@ export function createInventoryService({ pool, withTx, repos, audit }) {
       return withTx(async (db) => {
         const product = await products.getById(db, body.productId);
         if (!product) throw badRequest("PRODUCT_NOT_FOUND", "Product not found");
+        // Staff (inventory:adjust) can adjust anything; a shop owner only their own shop's products.
+        if (!actor?.permissions?.includes("inventory:adjust") && (!actor?.sellerId || product.seller_id !== actor.sellerId)) {
+          throw forbidden("FORBIDDEN", "You can only adjust stock for your own products");
+        }
         const row = await inventory.lockRow(db, { branchId: body.branch, productId: body.productId, variantId: body.variantId ?? null });
         const newQty = Math.max(row.on_hand + body.delta, 0);
         const applied = newQty - row.on_hand;
