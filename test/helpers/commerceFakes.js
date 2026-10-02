@@ -1,3 +1,5 @@
+import { formatOrderNumber } from "../../src/repositories/orders.repository.js";
+
 /** In-memory repos for pricing/coupons/orders/addresses service tests — real services, fake data layer. */
 export function createFakeCommerce() {
   const db = {
@@ -6,7 +8,9 @@ export function createFakeCommerce() {
     products: [
       { id: "soap", name: "Soap", category_id: "grocery", brand_id: "b1", price: 5, sale_price: null, tax_percent: 5, moq: 1, max_qty: 10, status: "active", prescription_required: false, seller_id: "novatech" },
       { id: "cough-syrup", name: "Cough Syrup", category_id: "health", brand_id: "b1", price: 8, sale_price: null, tax_percent: 0, moq: 1, max_qty: 5, status: "active", prescription_required: true, seller_id: "novatech" },
+      { id: "bandage", name: "Bandage", category_id: "health", brand_id: "b1", price: 3, sale_price: null, tax_percent: 0, moq: 1, max_qty: 10, status: "active", prescription_required: false, seller_id: "medico" },
     ],
+    sellers: [{ id: "novatech", owner_user_id: "u-nova", status: "active" }, { id: "medico", owner_user_id: "u-medico", status: "active" }],
     variants: {},
     inventory: new Map(), // key `${branch}|${product}|${variant||''}` -> { id, on_hand, reserved }
     batches: { "cough-syrup": { "store-01": [{ id: "b-old", qty: 3, expiry_date: "2026-10-01", is_legacy_opening: false }, { id: "b-new", qty: 10, expiry_date: "2026-12-01", is_legacy_opening: false }] } },
@@ -21,7 +25,7 @@ export function createFakeCommerce() {
     suppliers: [{ id: "sup-1", name: "MedSource", contact: "Anita", phone: "+1 555 0410", email: "a@x.com", terms: "Net 30" }],
     purchaseOrders: [], poLines: new Map(),
     posSales: [], posSaleItems: new Map(),
-    seq: 0,
+    seq: 0, orderSeq: 0,
   };
   const key = (b, p, v) => `${b}|${p}|${v || ""}`;
   const rowFor = (b, p, v) => db.inventory.get(key(b, p, v));
@@ -96,7 +100,9 @@ export function createFakeCommerce() {
     async remove(_d, userId, id) { const i = db.addresses.findIndex((x) => x.id === id && x.user_id === userId); if (i < 0) return false; db.addresses.splice(i, 1); return true; },
   };
   const orders = {
-    async nextNumber() { return `PN-${1000 + ++db.seq}`; },
+    // Mirrors the real repository: one atomic counter (a Postgres sequence in production), same PN-YYYYMMDD-NNNNNN format.
+    async nextNumber() { return formatOrderNumber("20261001", ++db.orderSeq); },
+    async listForSeller(_d, sellerId) { return db.orders.filter((o) => (db.orderItems.get(o.id) ?? []).some((i) => i.seller_id === sellerId)); },
     async countForUser(_d, userId) { return db.orders.filter((o) => o.user_id === userId).length; },
     async insert(_d, o) {
       const row = { id: `ord-${++db.seq}`, number: o.number, user_id: o.userId, branch_id: o.branchId, status: "placed", payment_method: o.paymentMethod,
@@ -122,6 +128,9 @@ export function createFakeCommerce() {
       for (const [k, col] of Object.entries(map)) if (patch[k] !== undefined) row[col] = patch[k];
       return row;
     },
+  };
+  const sellers = {
+    async getByOwner(_d, userId) { return db.sellers.find((x) => x.owner_user_id === userId) ?? null; },
   };
   const wishlist = {
     async has(_d, userId, productId) { return db._wish?.some((w) => w.userId === userId && w.productId === productId) ?? false; },
@@ -149,8 +158,11 @@ export function createFakeCommerce() {
     async insertPosSale(_d, s) { const row = { id: `sale-${++db.seq}`, ...s, created_at: new Date() }; db.posSales.push(row); db.posSaleItems.set(row.id, []); return row; },
     async insertPosSaleItem(_d, saleId, it) { db.posSaleItems.get(saleId).push(it); },
   };
-  return { db, key, repos: { products, catalog, inventory, coupons, addresses, orders, wishlist, purchasing } };
+  return { db, key, repos: { products, catalog, inventory, coupons, addresses, orders, wishlist, purchasing, sellers } };
 }
 
 export const customer = { id: "u-cust", name: "Cust", roles: ["customer"], permissions: [] };
+/** Shop owners (role "seller"): which shop is theirs comes from db.sellers, never from the request. */
+export const sellerNova = { id: "u-nova", name: "Nova", roles: ["seller"], permissions: ["seller:manage_own", "catalog:write_own", "payouts:request"] };
+export const sellerMedico = { id: "u-medico", name: "Medico", roles: ["seller"], permissions: ["seller:manage_own", "catalog:write_own", "payouts:request"] };
 export const staffOrders = { id: "u-staff", name: "Staff", roles: ["warehouse"], permissions: ["orders:update_status", "orders:read_all", "orders:cancel"] };

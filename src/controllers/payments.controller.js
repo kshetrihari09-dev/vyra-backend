@@ -4,6 +4,8 @@ export function createPaymentsController({ services }) {
   const { payments } = services;
   return {
     async getForOrder(req, res) { ok(res, { payments: await payments.get(req.auth.user, req.valid.params.id) }); },
+    /** Customer pays again for an existing, still-unpaid order — never creates a second order. */
+    async retry(req, res) { ok(res, await payments.retry(req.auth.user, req.valid.params.id, clientContext(req))); },
     async confirmManual(req, res) { ok(res, await payments.confirmManual(req.auth.user, req.valid.params.id, clientContext(req))); },
 
     /** Public: no session, verified purely by the provider's signature. Always 200s a well-formed, verified

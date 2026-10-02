@@ -90,7 +90,7 @@ export function createDeliveryRepository() {
         `SELECT o.id, o.number, o.branch_id, o.total, o.payment_method, o.eta, o.address,
                 (SELECT count(*) FROM order_items oi WHERE oi.order_id = o.id) AS item_count
            FROM orders o
-          WHERE o.status = 'packed' AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.order_id = o.id AND d.status IN ${ACTIVE})
+          WHERE o.status = 'packed' AND (o.payment_method = 'cod' OR o.payment_status = 'paid') AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.order_id = o.id AND d.status IN ${ACTIVE})
           ORDER BY o.placed_at`);
       return rows;
     },

@@ -19,6 +19,7 @@ describe("delivery API (real Postgres)", { skip: skipReason }, () => {
     addressId = (await ctx.request.post("/api/addresses").set(cust).send({ name: "Alex Morgan", phone: "+1 555 0190", line1: "24 Maple Court", city: "Metro City", zip: "10245" })).body.data.address.id;
     const o = await ctx.request.post("/api/orders").set(cust).send({ items: [{ productId: "paracetamol-500", qty: 1 }], addressId, paymentMethod: "cod", deliveryOptionId: "standard" });
     orderId = o.body.data.order.id;
+    await ctx.request.post(`/api/orders/${orderId}/status`).set(warehouse).send({ status: "confirmed" });
     await ctx.request.post(`/api/orders/${orderId}/status`).set(warehouse).send({ status: "preparing" });
     await ctx.request.post(`/api/orders/${orderId}/status`).set(warehouse).send({ status: "packed" });
   });
@@ -27,7 +28,8 @@ describe("delivery API (real Postgres)", { skip: skipReason }, () => {
   it("the plaintext code column is gone, and the owner (only) sees a 4-digit code", async () => {
     const { rows } = await ctx.container.pool.query("SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'otp'");
     assert.equal(rows.length, 0);
-    assert.match((await ctx.request.get(`/api/orders/${orderId}`).set(cust)).body.data.order.otp, /^\d{4}$/);
+    // Packed but not yet with a rider: the code is not shown yet (it appears once the order is assigned / out for delivery).
+    assert.equal((await ctx.request.get(`/api/orders/${orderId}`).set(cust)).body.data.order.otp, undefined);
     assert.equal((await ctx.request.get(`/api/orders/${orderId}`).set(warehouse)).body.data.order.otp, undefined);
   });
 
@@ -59,6 +61,8 @@ describe("delivery API (real Postgres)", { skip: skipReason }, () => {
 
     const order = (await ctx.request.get(`/api/orders/${orderId}`).set(cust)).body.data.order;
     assert.equal(order.status, "out_for_delivery");
+    assert.match(order.otp, /^\d{4}$/, "the customer sees the code now that the order is out for delivery");
+    assert.equal((await ctx.request.get(`/api/orders/${orderId}`).set(warehouse)).body.data.order.otp, undefined);
     const track = (await ctx.request.get(`/api/orders/${orderId}/tracking`).set(cust)).body.data.tracking;
     assert.equal(track.delivery.location.lat, 27.7);
 

@@ -43,12 +43,15 @@ function setup() {
 }
 
 /** Places an order (branch store-01 → OTP required) and walks it to "packed". */
-async function packedOrder(e, { paymentMethod = "cod", qty = 1 } = {}) {
+async function packedOrder(e, { paymentMethod = "cod", qty = 1, paid = true } = {}) {
   const o = await e.orders.create(customer, { items: [{ productId: "soap", qty }], addressId: "addr-1", paymentMethod, deliveryOptionId: "standard" }, ctx);
+  if (paymentMethod !== "cod" && paid) markPaid(e, o.id); // what payments.service does when the provider confirms the capture
+  await e.orders.advance(staffOrders, o.id, { status: "confirmed" }, ctx);
   await e.orders.advance(staffOrders, o.id, { status: "preparing" }, ctx);
   await e.orders.advance(staffOrders, o.id, { status: "packed" }, ctx);
   return o;
 }
+const markPaid = (e, id) => { e.db.orders.find((o) => o.id === id).payment_status = "paid"; };
 const makeRider = async (e, userId, { available = true } = {}) => {
   const rider = await e.delivery.createRider(dispatcher, { userId, phone: "+1 555 0231", vehicle: "Scooter · MC-4418" }, ctx);
   if (available) await e.delivery.setAvailability(riderActor(userId), true);
@@ -357,6 +360,8 @@ describe("completing a delivery (the handover code)", () => {
   it("a branch that doesn't use codes completes without one", async () => {
     e.db.inventory.set(e.key("store-02", "soap", ""), { id: e.key("store-02", "soap", ""), on_hand: 10, reserved: 0 });
     const o = await e.orders.create(customer, { items: [{ productId: "soap", qty: 1 }], addressId: "addr-1", paymentMethod: "card", deliveryOptionId: "standard", branch: "store-02" }, ctx);
+    markPaid(e, o.id);
+    await e.orders.advance(staffOrders, o.id, { status: "confirmed" }, ctx);
     await e.orders.advance(staffOrders, o.id, { status: "preparing" }, ctx);
     await e.orders.advance(staffOrders, o.id, { status: "packed" }, ctx);
     const r2 = await makeRider(e, "u-r2");
@@ -491,7 +496,7 @@ describe("notifications raised by delivery", () => {
     const id = await toOutForDelivery(e, o, r1.id, "u-r1");
     await e.delivery.deliver(riderActor("u-r1"), id, { otp: otpOf(e, o.id), cashCollected: Number(e.db.orders.find((x) => x.id === o.id).total) }, ctx);
     assert.deepEqual(typesFor(e, o.id), [
-      `order.placed>${customer.id}`, `order.packed>${customer.id}`,
+      `order.placed>${customer.id}`, `order.confirmed>${customer.id}`, `order.packed>${customer.id}`,
       `delivery.assigned>${customer.id}`, "rider.assigned>u-r1",
       `delivery.out_for_delivery>${customer.id}`, `delivery.delivered>${customer.id}`,
     ]);

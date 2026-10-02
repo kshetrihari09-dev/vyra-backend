@@ -10,6 +10,7 @@ export function paymentsRoutes({ container, controller }) {
   const authed = authenticate(container);
 
   r.get("/orders/:id/payment", authed, validate({ params: v.orderIdParams }), controller.getForOrder);
+  r.post("/orders/:id/payment/retry", authed, validate({ params: v.orderIdParams }), controller.retry);
   r.post("/payments/:id/confirm-manual", authed, requirePermission("payments:manage"), validate({ params: v.paymentIdParams }), controller.confirmManual);
 
   r.post("/orders/:id/refund-request", authed, validate({ params: v.orderIdParams, body: v.refundRequestBody }), controller.requestRefund);

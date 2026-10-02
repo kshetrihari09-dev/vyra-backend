@@ -1,11 +1,17 @@
 /** Orders, order items and status history. */
+export const formatOrderNumber = (day, seq) => `PN-${day}-${String(seq).padStart(6, "0")}`;
+
 export function createOrdersRepository() {
   return {
+    /**
+     * `PN-YYYYMMDD-NNNNNN`, e.g. PN-20261001-000001. The counter is a Postgres SEQUENCE: nextval() is atomic across
+     * concurrent transactions, so two orders can never be handed the same value (no random suffix, no read-then-write
+     * race). Gaps are possible — a rolled-back checkout burns its number — and are harmless; uniqueness is what matters,
+     * and orders.number is UNIQUE as the final backstop. The date part is the UTC day the number was issued.
+     */
     async nextNumber(db) {
-      // Sequence-free ticket: a monotonic-enough human number. Not guaranteed gap-free under heavy concurrency,
-      // but PN-xxxx only needs to be unique and roughly ordered, and the unique index is the real guarantee.
-      const { rows } = await db.query("SELECT to_char(now(), 'FMYYYYMMDD') || lpad(floor(random() * 9000 + 1000)::text, 4, '0') AS n");
-      return `PN-${rows[0].n.slice(4)}`;
+      const { rows } = await db.query("SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYYMMDD') AS day, nextval('order_number_seq') AS seq");
+      return formatOrderNumber(rows[0].day, rows[0].seq);
     },
 
     async insert(db, o) {
@@ -61,6 +67,15 @@ export function createOrdersRepository() {
     /** Used for "first order" coupon eligibility — counts every order the user has ever placed, cancelled included. */
     async countForUser(db, userId) {
       return Number((await db.query("SELECT count(*) AS n FROM orders WHERE user_id = $1", [userId])).rows[0].n);
+    },
+
+    /** Orders that contain at least one line sold by this seller (a basket can span several shops). */
+    async listForSeller(db, sellerId, { limit = 200 } = {}) {
+      const { rows } = await db.query(
+        "SELECT o.* FROM orders o WHERE EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.seller_id = $1) ORDER BY o.placed_at DESC LIMIT $2",
+        [sellerId, limit],
+      );
+      return rows;
     },
 
     async listAll(db, { status = null, limit = 200 } = {}) {

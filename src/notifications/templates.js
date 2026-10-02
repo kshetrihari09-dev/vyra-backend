@@ -11,7 +11,12 @@ export const TEMPLATES = {
   "order.placed": {
     kind: "order", email: true,
     title: () => "Order placed",
-    message: (d) => `Order ${d.number} is confirmed — total ${money(d.total)}.`,
+    message: (d) => `Order ${d.number} has been placed — total ${money(d.total)}. The store will confirm it shortly.`,
+  },
+  "order.confirmed": {
+    kind: "order",
+    title: () => "Order confirmed",
+    message: (d) => `The store has confirmed order ${d.number} and will start preparing it.`,
   },
   "order.packed": {
     kind: "order",

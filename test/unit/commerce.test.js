@@ -27,7 +27,7 @@ function setup() {
   // Prescription gating and payment creation are their own concern, covered in prescriptions.test.js and
   // payments.test.js — these permissive stubs keep this file's tests focused on pricing/inventory/FEFO.
   const prescriptions = { assertCoverage: async () => [], linkToOrder: async () => {} };
-  const payments = { createForOrder: async () => {}, markCodCollected: async () => {} };
+  const payments = { createForOrder: async () => {}, markCodCollected: async () => {}, settleOnCancel: async () => ({}) };
   const orders = createOrdersService({ pool: {}, withTx, repos: fake.repos, pricing, audit, prescriptions, payments, codes });
   const addresses = createAddressesService({ pool: {}, withTx, repos: fake.repos });
   return { ...fake, audit, coupons, pricing, cart, orders, addresses };
@@ -78,13 +78,13 @@ describe("coupons", () => {
 });
 
 describe("order creation", () => {
-  it("reserves stock, snapshots the address, and auto-confirms", async () => {
+  it("reserves stock, snapshots the address, and leaves the order 'placed' for the shop to confirm", async () => {
     const e = setup();
     const order = await e.orders.create(customer, { items: [{ productId: "soap", qty: 2 }], addressId: "addr-1", paymentMethod: "cod", deliveryOptionId: "standard" }, ctx);
-    assert.equal(order.status, "confirmed");
+    assert.equal(order.status, "placed", "no auto-confirm: the seller confirms");
     assert.equal(order.totals.subtotal, 10);
     assert.equal(order.shipTo.line1, "24 Maple Ct");
-    assert.deepEqual(order.history.map((h) => h.status), ["placed", "confirmed"]);
+    assert.deepEqual(order.history.map((h) => h.status), ["placed"]);
     const row = e.db.inventory.get(e.key("store-01", "soap", ""));
     assert.equal(row.reserved, 2);
     assert.equal(row.on_hand, 10, "reservation does not touch on_hand yet");
@@ -125,6 +125,8 @@ describe("order fulfilment", () => {
 
   it("stages must advance one at a time — skipping ahead is rejected", async () => {
     await assert.rejects(e.orders.advance(staffOrders, order.id, { status: "packed" }, ctx), { code: "INVALID_TRANSITION" });
+    await assert.rejects(e.orders.advance(staffOrders, order.id, { status: "preparing" }, ctx), { code: "INVALID_TRANSITION" }); // must be confirmed first
+    assert.ok(await e.orders.advance(staffOrders, order.id, { status: "confirmed" }, ctx));
     assert.ok(await e.orders.advance(staffOrders, order.id, { status: "preparing" }, ctx));
   });
 
@@ -133,6 +135,7 @@ describe("order fulfilment", () => {
   });
 
   it("reaching 'packed' deducts on-hand and consumes batches oldest-expiry-first", async () => {
+    await e.orders.advance(staffOrders, order.id, { status: "confirmed" }, ctx);
     await e.orders.advance(staffOrders, order.id, { status: "preparing" }, ctx);
     await e.orders.advance(staffOrders, order.id, { status: "packed" }, ctx);
     const row = e.db.inventory.get(e.key("store-01", "cough-syrup", ""));
@@ -144,6 +147,7 @@ describe("order fulfilment", () => {
   });
 
   it("the generic staff endpoint stops at 'packed' — assigned/out/delivered belong to the delivery module (no OTP bypass)", async () => {
+    await e.orders.advance(staffOrders, order.id, { status: "confirmed" }, ctx);
     await e.orders.advance(staffOrders, order.id, { status: "preparing" }, ctx);
     await e.orders.advance(staffOrders, order.id, { status: "packed" }, ctx);
     for (const status of ["assigned", "out_for_delivery", "delivered"]) {
@@ -158,6 +162,7 @@ describe("order fulfilment", () => {
     assert.equal(e.db.inventory.get(e.key("store-01", "cough-syrup", "")).reserved, 0);
 
     const order2 = await e.orders.create(customer, { items: [{ productId: "soap", qty: 1 }], addressId: "addr-1", paymentMethod: "cod", deliveryOptionId: "standard" }, ctx);
+    await e.orders.advance(staffOrders, order2.id, { status: "confirmed" }, ctx);
     await e.orders.advance(staffOrders, order2.id, { status: "preparing" }, ctx);
     await e.orders.advance(staffOrders, order2.id, { status: "packed" }, ctx);
     await assert.rejects(e.orders.cancel(customer, order2.id, {}, ctx), { code: "TOO_LATE_TO_CANCEL" });
@@ -183,6 +188,7 @@ describe("order visibility", () => {
     const row = e.db.orders.find((o) => o.id === order.id);
     assert.equal(row.otp, undefined);                         // no plaintext column any more
     assert.match(row.otp_nonce, /^[0-9a-f]{24}$/);            // only a random nonce is stored
+    row.status = "out_for_delivery";                          // the delivery phase — see the next test for the other stages
     const mine = await e.orders.get(customer, order.id);
     assert.match(mine.otp, /^\d{4}$/);
     assert.equal(mine.otp, codes.codeFor(row.id, row.otp_nonce));
@@ -191,6 +197,21 @@ describe("order visibility", () => {
       assert.equal((await e.orders.get(who, order.id)).otp, undefined, who.id);
     }
     assert.equal((await e.orders.list({ id: "dispatch", permissions: ["orders:read_all", "delivery:manage"] })).some((o) => o.otp !== undefined), false);
+  });
+
+  it("the handover code is hidden until the order is assigned, and again once it is closed — in get() AND list()", async () => {
+    const e = setup();
+    const order = await e.orders.create(customer, { items: [{ productId: "soap", qty: 1 }], addressId: "addr-1", paymentMethod: "cod", deliveryOptionId: "standard" }, ctx);
+    const row = e.db.orders.find((o) => o.id === order.id);
+    assert.equal(order.otp, undefined, "not in the create() response");
+    const visible = { placed: false, confirmed: false, preparing: false, packed: false, assigned: true, out_for_delivery: true, delivered: false, cancelled: false, returned: false };
+    for (const [status, shown] of Object.entries(visible)) {
+      row.status = status;
+      const viaGet = (await e.orders.get(customer, order.id)).otp;
+      const viaList = (await e.orders.list(customer)).find((o) => o.id === order.id).otp;
+      assert.equal(viaGet !== undefined, shown, `get() at ${status}`);
+      assert.equal(viaList !== undefined, shown, `list() at ${status}`);
+    }
   });
 
   it("no code is issued when the branch doesn't require one", async () => {

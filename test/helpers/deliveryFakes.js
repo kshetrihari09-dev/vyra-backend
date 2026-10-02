@@ -51,7 +51,7 @@ export function createFakeDelivery() {
     async listForRider(_d, riderId, { active }) { return db.deliveries.filter((d) => d.rider_id === riderId && ACTIVE.includes(d.status) === active).map(view); },
     async listActive() { return db.deliveries.filter((d) => ACTIVE.includes(d.status)).map(view); },
     async listClaimable() {
-      return db.orders.filter((o) => o.status === "packed" && !db.deliveries.some((d) => d.order_id === o.id && ACTIVE.includes(d.status)))
+      return db.orders.filter((o) => o.status === "packed" && (o.payment_method === "cod" || o.payment_status === "paid") && !db.deliveries.some((d) => d.order_id === o.id && ACTIVE.includes(d.status)))
         .map((o) => ({ ...o, item_count: (db.orderItems.get(o.id) ?? []).length }));
     },
     async addLocation(_d, deliveryId, p) { db.locations.push({ delivery_id: deliveryId, ...p }); },
@@ -68,6 +68,7 @@ export function createFakeDelivery() {
   // Payments are their own service (payments.test.js); here we only need to observe what delivery asks of it.
   const payments = {
     async createForOrder() {},
+    async settleOnCancel() { return {}; },
     async markCodCollected(_d, orderId) { db.payments.push({ orderId, action: "cod_collected" }); },
     async markCodNotCollected(_d, orderId) { db.payments.push({ orderId, action: "cod_not_collected" }); },
   };

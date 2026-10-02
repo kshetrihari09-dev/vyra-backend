@@ -1,5 +1,6 @@
 import { DELIVERY_RULES, FAILURE_REASONS } from "../config/delivery.js";
 import { toClaimableDto, toDeliveryDto, toEventDto, toRiderDto } from "../models/delivery.model.js";
+import { assertPaymentCleared, assertTransition } from "../domain/orderRules.js";
 import { badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
 
 const can = (actor, perm) => !!actor?.permissions?.includes(perm);
@@ -40,9 +41,12 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
     return order;
   }
 
-  const moveOrder = async (db, orderId, status, { note = null, patch } = {}) => {
-    const updated = await orders.updateStatus(db, orderId, status, patch);
-    await orders.addHistory(db, orderId, status, note);
+  /** Every status change from "packed" on goes through here, and through the one transition table (domain/orderRules.js):
+   *  `order` is the row the caller just locked, so the move is checked against its real current status. */
+  const moveOrder = async (db, order, status, { note = null, patch } = {}) => {
+    assertTransition(order.status, status);
+    const updated = await orders.updateStatus(db, order.id, status, patch);
+    await orders.addHistory(db, order.id, status, note);
     return updated;
   };
 
@@ -99,9 +103,10 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         if (!rider.is_available) throw conflict("RIDER_UNAVAILABLE", "Switch to available to take deliveries");
         const order = await lockOrder(db, orderId);
         if (order.status !== "packed") throw conflict("NOT_DISPATCHABLE", `Order is "${order.status}" — only packed orders can be taken.`);
+        assertPaymentCleared(order);
         if (await repo.activeForOrder(db, orderId)) throw conflict("ALREADY_ASSIGNED", "That order was just taken by someone else");
         const d = await openAssignment(db, { actor, order, rider, selfClaimed: true });
-        await moveOrder(db, order.id, "assigned", { patch: { partner: partnerOf(rider) } });
+        await moveOrder(db, order, "assigned", { patch: { partner: partnerOf(rider) } });
         await repo.addEvent(db, { deliveryId: d.id, orderId, type: "claimed", actorId: actor.id });
         await tell(db, order, "delivery.assigned", { riderName: rider.full_name });
         await audit.log({ actor, action: "delivery.claimed", entityType: "delivery", entityId: d.id, newValue: { orderId, riderId: rider.id } }, ctx, db);
@@ -126,7 +131,7 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         if (!["assigned", "accepted"].includes(d.status)) throw conflict("CANNOT_DECLINE", "Once the order is picked up, use \"couldn't deliver\" instead.");
         const order = await lockOrder(db, d.order_id);
         await repo.updateDelivery(db, d.id, { status: "cancelled", cancelReason: `declined${body?.reason ? `: ${body.reason}` : ""}`, closedAt: clock() });
-        await moveOrder(db, order.id, "packed", { note: "Rider declined — back to dispatch", patch: { partner: null } });
+        await moveOrder(db, order, "packed", { note: "Rider declined — back to dispatch", patch: { partner: null } });
         await repo.addEvent(db, { deliveryId: d.id, orderId: order.id, type: "declined", actorId: actor.id, note: body?.reason ?? null });
         await audit.log({ actor, action: "delivery.declined", entityType: "delivery", entityId: d.id, newValue: { orderId: order.id, reason: body?.reason ?? null } }, ctx, db);
         return dto(db, d.id);
@@ -139,8 +144,9 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         if (d.status !== "accepted") throw conflict("NOT_ACCEPTED", d.status === "assigned" ? "Accept the delivery before picking it up." : `This delivery is "${d.status}".`);
         const order = await lockOrder(db, d.order_id);
         if (order.status !== "assigned") throw conflict("ORDER_STATE", `Order is "${order.status}", not ready for pickup.`);
+        assertPaymentCleared(order);
         await repo.updateDelivery(db, d.id, { status: "picked_up", pickedUpAt: clock() });
-        await moveOrder(db, order.id, "out_for_delivery");
+        await moveOrder(db, order, "out_for_delivery");
         await repo.addEvent(db, { deliveryId: d.id, orderId: order.id, type: "picked_up", actorId: actor.id });
         await tell(db, order, "delivery.out_for_delivery"); // never carries the handover code — see notifications/templates.js
         await audit.log({ actor, action: "delivery.picked_up", entityType: "delivery", entityId: d.id, newValue: { orderId: order.id } }, ctx, db);
@@ -172,6 +178,7 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         if (d.status !== "picked_up") throw conflict("NOT_OUT_FOR_DELIVERY", d.status === "delivered" ? "This delivery is already complete." : "Pick the order up before completing it.");
         const order = await lockOrder(db, d.order_id);
         if (order.status !== "out_for_delivery") throw conflict("ORDER_STATE", `Order is "${order.status}".`);
+        assertPaymentCleared(order); // defence in depth: a prepaid order that somehow lost its "paid" state can't be handed over
 
         if (order.otp_required) {
           const max = DELIVERY_RULES.otpMaxAttempts;
@@ -198,7 +205,7 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         const now = clock();
         await repo.updateDelivery(db, d.id, { status: "delivered", deliveredAt: now, closedAt: now, ...(cod ? { cashCollected: order.total } : {}) });
         await repo.purgeLocations(db, d.id);
-        await moveOrder(db, order.id, "delivered", { patch: { deliveredAt: now, paymentStatus: cod ? "paid" : order.payment_status } });
+        await moveOrder(db, order, "delivered", { patch: { deliveredAt: now, paymentStatus: cod ? "paid" : order.payment_status } });
         if (cod) await payments.markCodCollected(db, order.id);
         await repo.addEvent(db, { deliveryId: d.id, orderId: order.id, type: "delivered", actorId: actor.id });
         await tell(db, order, "delivery.delivered");
@@ -227,11 +234,11 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         let orderOutcome;
         if (attempts < DELIVERY_RULES.maxAttemptsPerOrder) {
           orderOutcome = "redispatch";
-          await moveOrder(db, order.id, "packed", { note: `Delivery attempt ${attempts} failed: ${label}`, patch: { partner: null } });
+          await moveOrder(db, order, "packed", { note: `Delivery attempt ${attempts} failed: ${label}`, patch: { partner: null } });
         } else {
           orderOutcome = "returned";
           const cod = order.payment_method === "cod";
-          await moveOrder(db, order.id, "returned", { note: `Delivery failed ${attempts} times (${label}) — returned to store`, patch: { returnedAt: now, ...(cod ? { paymentStatus: "not_collected" } : {}) } });
+          await moveOrder(db, order, "returned", { note: `Delivery failed ${attempts} times (${label}) — returned to store`, patch: { returnedAt: now, ...(cod ? { paymentStatus: "not_collected" } : {}) } });
           if (cod) await payments.markCodNotCollected(db, order.id);
         }
         await repo.addEvent(db, { deliveryId: d.id, orderId: order.id, type: "failed", actorId: actor.id, note: [label, body.note].filter(Boolean).join(" — ") });
@@ -247,11 +254,12 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
       return withTx(async (db) => {
         const order = await lockOrder(db, orderId);
         if (order.status !== "packed") throw conflict("NOT_DISPATCHABLE", `Order is "${order.status}" — only packed orders can be assigned.`);
+        assertPaymentCleared(order);
         if (await repo.activeForOrder(db, orderId)) throw conflict("ALREADY_ASSIGNED", "This order already has a rider.");
         const rider = await repo.getRider(db, body.riderId, { forUpdate: true });
         if (!rider) throw notFound("RIDER_NOT_FOUND", "Rider not found");
         const d = await openAssignment(db, { actor, order, rider });
-        await moveOrder(db, order.id, "assigned", { patch: { partner: partnerOf(rider) } });
+        await moveOrder(db, order, "assigned", { patch: { partner: partnerOf(rider) } });
         await repo.addEvent(db, { deliveryId: d.id, orderId, type: "assigned", actorId: actor.id, note: rider.full_name });
         await tell(db, order, "delivery.assigned", { riderName: rider.full_name });
         await notifications.emit(db, { userId: rider.user_id, type: "rider.assigned", data: { orderId, number: order.number } });
@@ -269,7 +277,7 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         if (!["assigned", "accepted"].includes(d.status)) throw conflict("CANNOT_UNASSIGN", d.status === "picked_up" ? "The rider already has the order — they must complete it or report it undeliverable." : `This delivery is "${d.status}".`);
         const order = await lockOrder(db, d.order_id);
         await repo.updateDelivery(db, d.id, { status: "cancelled", cancelReason: `unassigned${body?.reason ? `: ${body.reason}` : ""}`, closedAt: clock() });
-        await moveOrder(db, order.id, "packed", { note: "Rider unassigned", patch: { partner: null } });
+        await moveOrder(db, order, "packed", { note: "Rider unassigned", patch: { partner: null } });
         await repo.addEvent(db, { deliveryId: d.id, orderId: order.id, type: "unassigned", actorId: actor.id, note: body?.reason ?? null });
         await audit.log({ actor, action: "delivery.unassigned", entityType: "delivery", entityId: d.id, newValue: { orderId: order.id, reason: body?.reason ?? null } }, ctx, db);
         return dto(db, d.id);

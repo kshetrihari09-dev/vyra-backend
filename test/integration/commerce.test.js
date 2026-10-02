@@ -26,7 +26,7 @@ describe("commerce API (real Postgres)", { skip: skipReason }, () => {
     assert.equal(res.body.data.issues.length, 0);
   });
 
-  it("places an order end to end: reserves stock, prices with a coupon, auto-confirms", async () => {
+  it("places an order end to end: reserves stock, prices with a coupon, and stays 'placed' for the seller to confirm", async () => {
     const before = (await ctx.request.get("/api/products/paracetamol-500")).body.data.product;
     const stockBefore = before.stock["store-01"];
     const res = await ctx.request.post("/api/orders").set(custAuth).send({
@@ -34,7 +34,10 @@ describe("commerce API (real Postgres)", { skip: skipReason }, () => {
     });
     assert.equal(res.status, 201);
     const order = res.body.data.order;
-    assert.equal(order.status, "confirmed");
+    assert.equal(order.status, "placed");
+    assert.equal(order.paymentStatus, "pending");
+    assert.equal(order.otp, undefined, "no handover code on the confirmation response");
+    assert.match(order.orderNumber, /^PN-\d{8}-\d{6}$/);
     assert.equal(order.couponCode, "FIRST15");
     assert.ok(order.totals.discount > 0);
     // reserved stock lowers what /products reports as available, but not on_hand
@@ -50,8 +53,10 @@ describe("commerce API (real Postgres)", { skip: skipReason }, () => {
   it("fulfilment: staff advance stage by stage; 'packed' deducts real stock and batches", async () => {
     const created = await ctx.request.post("/api/orders").set(custAuth).send({ items: [{ productId: "paracetamol-500", qty: 3 }], addressId, paymentMethod: "cod", deliveryOptionId: "standard" });
     const id = created.body.data.order.id;
-    assert.equal((await ctx.request.post(`/api/orders/${id}/status`).set(custAuth).send({ status: "preparing" })).status, 403);
+    assert.equal((await ctx.request.post(`/api/orders/${id}/status`).set(custAuth).send({ status: "confirmed" })).status, 403);
+    assert.equal((await ctx.request.post(`/api/orders/${id}/status`).set(staffAuth).send({ status: "preparing" })).status, 409, "must be confirmed first");
     assert.equal((await ctx.request.post(`/api/orders/${id}/status`).set(staffAuth).send({ status: "packed" })).status, 409);
+    assert.equal((await ctx.request.post(`/api/orders/${id}/status`).set(staffAuth).send({ status: "confirmed" })).status, 200);
     await ctx.request.post(`/api/orders/${id}/status`).set(staffAuth).send({ status: "preparing" });
     const packed = await ctx.request.post(`/api/orders/${id}/status`).set(staffAuth).send({ status: "packed" });
     assert.equal(packed.status, 200);
