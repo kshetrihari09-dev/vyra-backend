@@ -35,7 +35,10 @@ export function createUsersService({ pool, withTx, repos, audit }) {
           throw conflict("LAST_ADMIN", "This is the last active administrator");
         }
         await users.setStatus(db, id, status);
-        if (status !== "active") await sessions.revokeAllForUser(db, id); // kick them out immediately
+        if (status !== "active") {
+          await sessions.revokeAllForUser(db, id); // kick them out immediately
+          await repos.delivery?.setUnavailableForUser(db, id); // a rider who can't sign in must not look "available" (lock order: user → rider)
+        }
         const after = await users.getAccess(db, id);
         await audit.log({ actor, action: "user.status_changed", entityType: "user", entityId: id, oldValue: auditView(before), newValue: { ...auditView(after), reason: reason ?? null } }, ctx, db);
         return toUserDto(after);
@@ -59,6 +62,8 @@ export function createUsersService({ pool, withTx, repos, audit }) {
           throw conflict("LAST_ADMIN", "This is the last active administrator");
         }
         await roles.replaceUserRoles(db, id, wanted, actor.id);
+        // Losing the delivery role ends rider access at once (it is decided from the role on every request); also take them off duty.
+        if (before.roles.includes("delivery") && !wanted.includes("delivery")) await repos.delivery?.setUnavailableForUser(db, id);
         await sessions.revokeAllForUser(db, id); // permissions changed: force a fresh sign-in
         const after = await users.getAccess(db, id);
         await audit.log({ actor, action: "user.roles_changed", entityType: "user", entityId: id, oldValue: { roles: before.roles }, newValue: { roles: after.roles } }, ctx, db);

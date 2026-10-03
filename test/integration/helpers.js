@@ -6,6 +6,8 @@ import { createContainer } from "../../src/container.js";
 import { runMigrations } from "../../src/db/migrate.js";
 import { seedReference } from "../../seeds/reference/roles_permissions.js";
 import { hashPassword } from "../../src/utils/password.js";
+import { seedDemoUsers } from "../../seeds/demo/users.js";
+import { seedDemoSellers } from "../../seeds/demo/sellers.js";
 import { seedDemoCatalog } from "../../seeds/demo/catalog.js";
 import { seedDemoCommerce } from "../../seeds/demo/commerce.js";
 import { seedDemoPurchasing } from "../../seeds/demo/purchasing.js";
@@ -24,6 +26,9 @@ export async function boot() {
   const container = createContainer(config);
   await runMigrations(container.pool, { log: () => {} });
   await seedReference(container.pool);
+  // Same order as seeds/run.js: demo users → sellers (their payouts need a user) → catalogue (products.seller_id is FK'd to sellers, migration 007).
+  await seedDemoUsers(container.pool, { log: () => {}, password: "Passw0rd1" });
+  await seedDemoSellers(container.pool, { log: () => {} });
   await seedDemoCatalog(container.pool, { log: () => {} });
   await seedDemoCommerce(container.pool, { log: () => {} });
   await seedDemoPurchasing(container.pool, { log: () => {} });

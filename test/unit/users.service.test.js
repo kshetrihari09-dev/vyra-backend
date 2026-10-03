@@ -74,3 +74,28 @@ describe("admin user management", () => {
     assert.ok(!("passwordHash" in page.items[0]));
   });
 });
+
+describe("admin changes take a rider off duty (rider access is revoked at once)", () => {
+  /** Same service, plus a delivery repo that records which users were taken off duty. */
+  function withRiders() {
+    const e = setup();
+    const off = [];
+    e.repos.delivery = { setUnavailableForUser: async (_db, id) => { off.push(id); } };
+    const service = createUsersService({ pool: {}, withTx: (fn) => fn({}), repos: e.repos, audit: e.audit });
+    return { ...e, service, off };
+  }
+  it("suspending a user takes them off duty; re-activating does not touch duty", async () => {
+    const e = withRiders(); const admin = await e.add("Ada", ["admin"]); const rider = await e.add("Dee", ["delivery"]);
+    await e.service.setStatus(await e.actor(admin), rider, { status: "suspended" }, ctx);
+    assert.deepEqual(e.off, [rider]);
+    await e.service.setStatus(await e.actor(admin), rider, { status: "active" }, ctx);
+    assert.deepEqual(e.off, [rider], "no change on reactivation: they must switch themselves back on");
+  });
+  it("removing the delivery role takes them off duty; keeping it, or changing other roles, does not", async () => {
+    const e = withRiders(); const admin = await e.add("Ada", ["admin"]); const rider = await e.add("Dee", ["delivery", "customer"]);
+    await e.service.setRoles(await e.actor(admin), rider, ["delivery", "customer", "pharmacist"], ctx);
+    assert.deepEqual(e.off, []);
+    await e.service.setRoles(await e.actor(admin), rider, ["customer"], ctx);
+    assert.deepEqual(e.off, [rider]);
+  });
+});

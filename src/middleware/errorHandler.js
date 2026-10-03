@@ -19,7 +19,7 @@ export function toErrorResponse(err, requestId) {
     case "23503": return { status: 409, body: { success: false, message: "This change conflicts with related data", code: "CONFLICT" } };
     case "23514": case "22P02": case "22003": case "22001":
       return { status: 400, body: { success: false, message: "Invalid input", code: "INVALID_INPUT" } };
-    case "40001": case "40P01":
+    case "40001": case "40P01": case "55P03":
       return { status: 409, body: { success: false, message: "The system was busy; please try again", code: "TRANSACTION_CONFLICT" } };
     default:
   }

@@ -2,7 +2,12 @@ const ACTIVE = "('assigned','accepted','picked_up')";
 
 /** Riders, deliveries (one active per order — enforced by a partial unique index), location points and run events. */
 export function createDeliveryRepository() {
-  const lock = (forUpdate) => (forUpdate ? " FOR UPDATE" : "");
+  const RIDER_SELECT = `
+    SELECT r.*, u.full_name, u.status AS user_status,
+           COALESCE((SELECT array_agg(ur.role_key) FROM user_roles ur WHERE ur.user_id = u.id), '{}') AS roles,
+           COALESCE((SELECT array_agg(DISTINCT rp.permission_key) FROM user_roles ur JOIN role_permissions rp ON rp.role_key = ur.role_key WHERE ur.user_id = u.id), '{}') AS permissions,
+           (SELECT count(*) FROM deliveries d WHERE d.rider_id = r.id AND d.status IN ${ACTIVE}) AS active_count
+      FROM riders r JOIN users u ON u.id = r.user_id`;
   const DELIVERY_VIEW = `
     SELECT d.*, o.number AS order_number, o.status AS order_status, o.branch_id, o.total AS order_total, o.payment_method,
            o.payment_status, o.otp_required, o.eta, o.address AS order_address, u.full_name AS rider_name,
@@ -14,12 +19,17 @@ export function createDeliveryRepository() {
 
   return {
     // ---------------------------------------------------------------- riders
+    /**
+     * A rider row plus everything the eligibility check needs about the OWNING USER — status, roles, expanded permissions —
+     * and the live delivery count, all in ONE statement. One read means the verdict is consistent with itself, and with
+     * `forUpdate` it is consistent with the row lock too. `FOR UPDATE OF r` locks only the riders row (never users).
+     */
     async getRider(db, id, { forUpdate = false } = {}) {
-      const { rows } = await db.query(`SELECT r.*, u.full_name FROM riders r JOIN users u ON u.id = r.user_id WHERE r.id = $1${forUpdate ? " FOR UPDATE OF r" : ""}`, [id]);
+      const { rows } = await db.query(`${RIDER_SELECT} WHERE r.id = $1${forUpdate ? " FOR UPDATE OF r" : ""}`, [id]);
       return rows[0] || null;
     },
     async getRiderByUser(db, userId, { forUpdate = false } = {}) {
-      const { rows } = await db.query(`SELECT r.*, u.full_name FROM riders r JOIN users u ON u.id = r.user_id WHERE r.user_id = $1${forUpdate ? " FOR UPDATE OF r" : ""}`, [userId]);
+      const { rows } = await db.query(`${RIDER_SELECT} WHERE r.user_id = $1${forUpdate ? " FOR UPDATE OF r" : ""}`, [userId]);
       return rows[0] || null;
     },
     async insertRider(db, { userId, phone, vehicle, isDemo = false }) {
@@ -34,14 +44,20 @@ export function createDeliveryRepository() {
       return this.getRider(db, id);
     },
     async listRiders(db) {
-      const { rows } = await db.query(
-        `SELECT r.*, u.full_name,
-                (SELECT count(*) FROM deliveries d WHERE d.rider_id = r.id AND d.status IN ${ACTIVE}) AS active_count
-           FROM riders r JOIN users u ON u.id = r.user_id ORDER BY u.full_name`);
+      const { rows } = await db.query(`${RIDER_SELECT} ORDER BY u.full_name, r.id`);
       return rows;
     },
     async countActiveForRider(db, riderId) {
       return Number((await db.query(`SELECT count(*) AS n FROM deliveries WHERE rider_id = $1 AND status IN ${ACTIVE}`, [riderId])).rows[0].n);
+    },
+    /**
+     * Called (inside the admin's transaction) when a user is suspended / deactivated or loses the delivery role: the rider
+     * is taken off duty so they stop appearing as someone who can take work. Access itself is already gone — it is decided
+     * from the user's role/permissions/status on every request — this just keeps the profile honest.
+     */
+    async setUnavailableForUser(db, userId) {
+      const { rowCount } = await db.query("UPDATE riders SET is_available = false WHERE user_id = $1 AND is_available", [userId]);
+      return rowCount;
     },
 
     // ------------------------------------------------------------ deliveries
@@ -57,6 +73,11 @@ export function createDeliveryRepository() {
         await db.query("SELECT id FROM deliveries WHERE id = $1 FOR UPDATE", [id]);
       }
       const { rows } = await db.query(`${DELIVERY_VIEW} WHERE d.id = $1`, [id]);
+      return rows[0] || null;
+    },
+    /** Unlocked, minimal read used ONLY to learn which order a delivery belongs to, so the ORDER can be locked first. */
+    async getDeliveryRef(db, id) {
+      const { rows } = await db.query("SELECT id, order_id, rider_id FROM deliveries WHERE id = $1", [id]);
       return rows[0] || null;
     },
     async activeForOrder(db, orderId) {

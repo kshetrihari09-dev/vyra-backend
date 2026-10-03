@@ -1,17 +1,19 @@
 import { Router } from "express";
 import { authenticate, requirePermission } from "../middleware/authenticate.js";
+import { requireRiderAccess } from "../middleware/riderAccess.js";
 import { validate } from "../middleware/validate.js";
 import * as v from "../validators/delivery.validators.js";
 
 /**
- * /rider/*    — the rider app (delivery:rider + a riders profile row; a rider only ever touches their own deliveries)
+ * /rider/*    — the rider app. `requireRiderAccess` runs the central rider check (active user + `delivery` role + `delivery:rider`
+ *               permission + an active profile that belongs to this user); a rider only ever touches their own deliveries)
  * /delivery/* — dispatch (delivery:manage)
  * /orders/:id/tracking — the order's owner, or staff (checked in the service)
  */
 export function deliveryRoutes({ container, controller }) {
   const r = Router();
   const authed = authenticate(container);
-  const rider = requirePermission("delivery:rider");
+  const rider = requireRiderAccess(container);
   const dispatch = requirePermission("delivery:manage");
 
   r.get("/rider/me", authed, rider, controller.me);

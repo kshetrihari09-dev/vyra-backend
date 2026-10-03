@@ -1,44 +1,81 @@
 import { DELIVERY_RULES, FAILURE_REASONS } from "../config/delivery.js";
 import { toClaimableDto, toDeliveryDto, toEventDto, toRiderDto } from "../models/delivery.model.js";
 import { assertPaymentCleared, assertTransition } from "../domain/orderRules.js";
-import { badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
+import { AppError, badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
+import { createRiderAccess } from "./riderAccess.service.js";
 
 const can = (actor, perm) => !!actor?.permissions?.includes(perm);
 const cents = (n) => Math.round(Number(n) * 100);
 const partnerOf = (rider) => ({ name: rider.full_name, phone: rider.phone, vehicle: rider.vehicle });
 /** Event types a customer may see on their own order's timeline (never notes, never OTP/staff housekeeping). */
 const CUSTOMER_EVENTS = ["assigned", "claimed", "picked_up", "delivered", "failed"];
+const BEFORE_PICKUP = ["assigned", "accepted"];
 
 /**
- * Delivery module (Phase 7). Owns everything from "packed" onwards:
+ * PostgreSQL concurrency errors, translated. Raw driver errors never reach the client (the global handler would turn an
+ * unknown one into a generic 500); these are expected under load and have a clear, actionable meaning.
+ *   40P01 deadlock_detected · 40001 serialization_failure · 55P03 lock_not_available → "try again"
+ *   23505 unique_violation → the one-active-delivery-per-order index (or a double-created rider profile)
+ */
+function friendlyDbError(err) {
+  if (err instanceof AppError) return err;
+  if (["40P01", "40001", "55P03"].includes(err?.code)) return conflict("DELIVERY_BUSY", "That delivery is being updated by someone else. Please try again.");
+  if (err?.code === "23505") {
+    if (err.constraint === "riders_user_id_key") return conflict("RIDER_EXISTS", "That user is already a rider");
+    return conflict("ALREADY_ASSIGNED", "Order is already assigned to another rider.");
+  }
+  return err;
+}
+
+/**
+ * Delivery module. Owns everything from "packed" onwards:
  *   packed ──assign/claim──▶ assigned ──pickup──▶ out_for_delivery ──deliver(code)──▶ delivered
  *                              ▲   │decline/unassign        │fail
  *                              └───┴──── back to packed ◀───┘ (until maxAttemptsPerOrder, then → returned)
- * Lock order is always: order row, then delivery row (rider actions lock the delivery first and the order second —
- * they can't collide with assign/claim because those only run when NO active delivery exists).
+ *
+ * LOCK ORDER — every transaction that touches more than one of these takes them in THIS order, and only the ones it needs:
+ *
+ *      user  →  order  →  rider  →  delivery  →  (payment)
+ *
+ *   claim ............ order → rider → delivery(new)      assign / reassign ... order → rider(new) → delivery
+ *   unassign ......... order → delivery                   decline/pickup/deliver/fail ... order → delivery
+ *   accept / location  delivery only                      setAvailability / updateRider .. rider only
+ *   createRider ...... user → rider(new)                  resetOtp ........... order only
+ *
+ * Because every path is a subsequence of that one order, no two transactions can each hold something the other wants:
+ * deadlock is impossible by construction rather than merely unlikely. Operations that are handed only a delivery id first
+ * read its order id WITHOUT a lock (`getDeliveryRef`), lock the order, and only then lock the delivery row and re-check.
+ * The partial unique index `deliveries_one_active_per_order` stays as the database-level backstop.
+ *
+ * Rider authorisation is NOT decided here: it is `riderAccess` (domain/riderEligibility.js), called on every path.
  */
-export function createDeliveryService({ pool, withTx, repos, audit, payments, codes, notifications = { emit: async () => null }, clock = () => new Date() }) {
+export function createDeliveryService({ pool, withTx, repos, audit, payments, codes, notifications = { emit: async () => null }, clock = () => new Date(), riderAccess = createRiderAccess({ repos }) }) {
   const { delivery: repo, orders, roles, users } = repos;
 
-  async function requireRider(db, actor, { forUpdate = false } = {}) {
-    const rider = await repo.getRiderByUser(db, actor.id, { forUpdate });
-    if (!rider) throw forbidden("NOT_A_RIDER", "This account isn't set up as a delivery rider");
-    if (rider.status !== "active") throw forbidden("RIDER_SUSPENDED", "Your rider account is suspended");
-    return rider;
-  }
-
-  /** A rider only ever sees or touches their own deliveries; anyone else's is simply "not found". */
-  async function ownDelivery(db, actor, id, { forUpdate = false } = {}) {
-    const rider = await requireRider(db, actor);
-    const d = await repo.getDelivery(db, id, { forUpdate });
-    if (!d || d.rider_id !== rider.id) throw notFound("DELIVERY_NOT_FOUND", "Delivery not found");
-    return { rider, d };
-  }
+  /** `withTx` with PostgreSQL concurrency errors mapped to safe, specific conflicts. */
+  const tx = async (fn) => {
+    try { return await withTx(fn); } catch (err) { throw friendlyDbError(err); }
+  };
 
   async function lockOrder(db, orderId) {
     const order = await orders.getById(db, orderId, { forUpdate: true });
     if (!order) throw notFound("ORDER_NOT_FOUND", "Order not found");
     return order;
+  }
+
+  /**
+   * A rider's access to ONE of their deliveries. The rider is validated first (central check, read-only: acting on an
+   * existing delivery makes no capacity decision, so the rider row is not locked), then locks are taken in global order:
+   * the order (only when the operation changes it) and the delivery. A delivery that isn't theirs is simply "not found".
+   */
+  async function lockOwnDelivery(db, actor, id, { withOrder = false } = {}) {
+    const rider = await riderAccess.requireSelf(db, actor);
+    const ref = await repo.getDeliveryRef(db, id);
+    if (!ref || ref.rider_id !== rider.id) throw notFound("DELIVERY_NOT_FOUND", "Delivery not found");
+    const order = withOrder ? await lockOrder(db, ref.order_id) : null;      // 1. order
+    const d = await repo.getDelivery(db, id, { forUpdate: true });            // 3. delivery
+    if (!d || d.rider_id !== rider.id) throw notFound("DELIVERY_NOT_FOUND", "Delivery not found");
+    return { rider, order, d };
   }
 
   /** Every status change from "packed" on goes through here, and through the one transition table (domain/orderRules.js):
@@ -50,11 +87,20 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
     return updated;
   };
 
-  /** Shared by assign / claim / reassign: capacity check, then the one-active-per-order insert. */
+  /** Why an order can't be taken right now, in words a rider or dispatcher can act on. The order row is locked by the caller. */
+  async function whyNotDispatchable(db, order, riderId = null) {
+    if (["assigned", "out_for_delivery"].includes(order.status)) {
+      const active = await repo.activeForOrder(db, order.id);
+      if (active && riderId && active.rider_id === riderId) return "You already have this delivery.";
+      return "Order is already assigned to another rider.";
+    }
+    return "Delivery is no longer available.";
+  }
+
+  /** Shared by assign / claim / reassign: capacity check (the rider row is already locked and validated), then the one-active-per-order insert. */
   async function openAssignment(db, { actor, order, rider, selfClaimed = false }) {
-    if (rider.status !== "active") throw conflict("RIDER_INACTIVE", "That rider's account isn't active");
     if (await repo.countActiveForRider(db, rider.id) >= DELIVERY_RULES.maxActivePerRider) {
-      throw conflict("RIDER_BUSY", `${selfClaimed ? "You already have" : "That rider already has"} ${DELIVERY_RULES.maxActivePerRider} deliveries in progress`);
+      throw conflict("RIDER_BUSY", `${selfClaimed ? "You have" : "Rider has"} reached the delivery limit (${DELIVERY_RULES.maxActivePerRider} active deliveries).`);
     }
     try {
       return await repo.insertDelivery(db, {
@@ -62,7 +108,7 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         assignedBy: selfClaimed ? null : actor.id, selfClaimed, acceptedAt: selfClaimed ? clock() : null,
       });
     } catch (err) {
-      if (err.code === "23505") throw conflict("ALREADY_ASSIGNED", "That order was just taken by someone else"); // the partial unique index is the backstop
+      if (err.code === "23505") throw conflict("ALREADY_ASSIGNED", "Order is already assigned to another rider."); // the partial unique index is the backstop
       throw err;
     }
   }
@@ -75,37 +121,42 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
   return {
     // =============================================================== rider: profile & queue
     async me(actor) {
-      return toRiderDto(await requireRider(pool, actor));
+      return toRiderDto(await riderAccess.requireSelf(pool, actor));
     },
 
     async setAvailability(actor, isAvailable) {
-      const rider = await requireRider(pool, actor);
-      return toRiderDto(await repo.updateRider(pool, rider.id, { isAvailable }));
+      return tx(async (db) => {
+        const rider = await riderAccess.requireSelf(db, actor, { lock: true }); // rider only
+        return toRiderDto(await repo.updateRider(db, rider.id, { isAvailable }));
+      });
     },
 
     async listMine(actor, { scope = "active" } = {}) {
-      const rider = await requireRider(pool, actor);
+      const rider = await riderAccess.requireSelf(pool, actor);
       const rows = await repo.listForRider(pool, rider.id, { active: scope !== "history" });
       return rows.map((r) => toDeliveryDto(r));
     },
 
     /** Packed, unassigned orders a rider could take — area only, no street/name/phone until it's theirs. */
     async listClaimable(actor) {
-      const rider = await requireRider(pool, actor);
+      const rider = await riderAccess.requireSelf(pool, actor);
       if (!rider.is_available) return [];
       return (await repo.listClaimable(pool)).map(toClaimableDto);
     },
 
     // =============================================================== rider: taking & doing a delivery
     async claim(actor, orderId, ctx) {
-      return withTx(async (db) => {
-        const rider = await requireRider(db, actor, { forUpdate: true });
+      return tx(async (db) => {
+        await riderAccess.requireSelf(db, actor);                                     // refuse an invalid rider BEFORE any lock or lookup (no order-id probing)
+        const order = await lockOrder(db, orderId);                                   // 1. order
+        const rider = await riderAccess.requireSelf(db, actor, { lock: true });       // 2. rider (re-validated under its lock: authoritative)
         if (!rider.is_available) throw conflict("RIDER_UNAVAILABLE", "Switch to available to take deliveries");
-        const order = await lockOrder(db, orderId);
-        if (order.status !== "packed") throw conflict("NOT_DISPATCHABLE", `Order is "${order.status}" — only packed orders can be taken.`);
+        // Two riders racing for one order are serialised by the order lock above: the loser wakes up here, sees the winner's
+        // committed state, and gets a clear conflict. The partial unique index is the second line of defence.
+        if (order.status !== "packed") throw conflict("NOT_DISPATCHABLE", await whyNotDispatchable(db, order, rider.id));
         assertPaymentCleared(order);
-        if (await repo.activeForOrder(db, orderId)) throw conflict("ALREADY_ASSIGNED", "That order was just taken by someone else");
-        const d = await openAssignment(db, { actor, order, rider, selfClaimed: true });
+        if (await repo.activeForOrder(db, orderId)) throw conflict("ALREADY_ASSIGNED", "Order is already assigned to another rider.");
+        const d = await openAssignment(db, { actor, order, rider, selfClaimed: true }); // 3. delivery (new row)
         await moveOrder(db, order, "assigned", { patch: { partner: partnerOf(rider) } });
         await repo.addEvent(db, { deliveryId: d.id, orderId, type: "claimed", actorId: actor.id });
         await tell(db, order, "delivery.assigned", { riderName: rider.full_name });
@@ -115,8 +166,8 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
     },
 
     async accept(actor, id, ctx) {
-      return withTx(async (db) => {
-        const { d } = await ownDelivery(db, actor, id, { forUpdate: true });
+      return tx(async (db) => {
+        const { d } = await lockOwnDelivery(db, actor, id);                           // delivery only
         if (d.status !== "assigned") throw conflict("NOT_OFFERED", `This delivery is "${d.status}" — there's nothing to accept.`);
         await repo.updateDelivery(db, d.id, { status: "accepted", acceptedAt: clock() });
         await repo.addEvent(db, { deliveryId: d.id, orderId: d.order_id, type: "accepted", actorId: actor.id });
@@ -126,10 +177,9 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
 
     /** Give the order back before picking it up. It returns to "packed" for someone else. */
     async decline(actor, id, body, ctx) {
-      return withTx(async (db) => {
-        const { d } = await ownDelivery(db, actor, id, { forUpdate: true });
-        if (!["assigned", "accepted"].includes(d.status)) throw conflict("CANNOT_DECLINE", "Once the order is picked up, use \"couldn't deliver\" instead.");
-        const order = await lockOrder(db, d.order_id);
+      return tx(async (db) => {
+        const { d, order } = await lockOwnDelivery(db, actor, id, { withOrder: true }); // order → delivery
+        if (!BEFORE_PICKUP.includes(d.status)) throw conflict("CANNOT_DECLINE", "Once the order is picked up, use \"couldn't deliver\" instead.");
         await repo.updateDelivery(db, d.id, { status: "cancelled", cancelReason: `declined${body?.reason ? `: ${body.reason}` : ""}`, closedAt: clock() });
         await moveOrder(db, order, "packed", { note: "Rider declined — back to dispatch", patch: { partner: null } });
         await repo.addEvent(db, { deliveryId: d.id, orderId: order.id, type: "declined", actorId: actor.id, note: body?.reason ?? null });
@@ -139,10 +189,9 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
     },
 
     async pickup(actor, id, ctx) {
-      return withTx(async (db) => {
-        const { d } = await ownDelivery(db, actor, id, { forUpdate: true });
+      return tx(async (db) => {
+        const { d, order } = await lockOwnDelivery(db, actor, id, { withOrder: true }); // order → delivery
         if (d.status !== "accepted") throw conflict("NOT_ACCEPTED", d.status === "assigned" ? "Accept the delivery before picking it up." : `This delivery is "${d.status}".`);
-        const order = await lockOrder(db, d.order_id);
         if (order.status !== "assigned") throw conflict("ORDER_STATE", `Order is "${order.status}", not ready for pickup.`);
         assertPaymentCleared(order);
         await repo.updateDelivery(db, d.id, { status: "picked_up", pickedUpAt: clock() });
@@ -156,8 +205,9 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
 
     /** Only while out for delivery, and pings faster than the interval are dropped rather than stored. */
     async updateLocation(actor, id, point) {
-      return withTx(async (db) => {
-        const { d } = await ownDelivery(db, actor, id, { forUpdate: true }); // serialises with deliver/fail so a late ping can't outlive the purge
+      return tx(async (db) => {
+        // Delivery lock only: it serialises with deliver/fail (which hold order → delivery) so a late ping can't outlive the purge.
+        const { d } = await lockOwnDelivery(db, actor, id);
         if (d.status !== "picked_up") throw conflict("NOT_TRACKING", "Location is only shared while you're out for delivery.");
         const now = clock();
         if (d.last_located_at && now - new Date(d.last_located_at) < DELIVERY_RULES.locationMinIntervalMs) return { accepted: false };
@@ -173,10 +223,9 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
      * error back to be thrown afterwards (throwing inside would roll the counter back — an unlimited-guess bug).
      */
     async deliver(actor, id, body, ctx) {
-      const outcome = await withTx(async (db) => {
-        const { d } = await ownDelivery(db, actor, id, { forUpdate: true });
+      const outcome = await tx(async (db) => {
+        const { d, order } = await lockOwnDelivery(db, actor, id, { withOrder: true }); // order → delivery
         if (d.status !== "picked_up") throw conflict("NOT_OUT_FOR_DELIVERY", d.status === "delivered" ? "This delivery is already complete." : "Pick the order up before completing it.");
-        const order = await lockOrder(db, d.order_id);
         if (order.status !== "out_for_delivery") throw conflict("ORDER_STATE", `Order is "${order.status}".`);
         assertPaymentCleared(order); // defence in depth: a prepaid order that somehow lost its "paid" state can't be handed over
 
@@ -222,10 +271,9 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
      * use an inventory adjustment), and a prepaid order needs its refund requested through the payments flow.
      */
     async fail(actor, id, body, ctx) {
-      return withTx(async (db) => {
-        const { d } = await ownDelivery(db, actor, id, { forUpdate: true });
+      return tx(async (db) => {
+        const { d, order } = await lockOwnDelivery(db, actor, id, { withOrder: true }); // order → delivery
         if (d.status !== "picked_up") throw conflict("NOT_OUT_FOR_DELIVERY", "Only an order that's out for delivery can be reported as undeliverable.");
-        const order = await lockOrder(db, d.order_id);
         const now = clock();
         await repo.updateDelivery(db, d.id, { status: "failed", failureReason: body.reason, failureNote: body.note ?? null, closedAt: now });
         await repo.purgeLocations(db, d.id);
@@ -251,14 +299,13 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
     // =============================================================== dispatch (delivery:manage)
     async assign(actor, orderId, body, ctx) {
       if (!can(actor, "delivery:manage")) throw forbidden();
-      return withTx(async (db) => {
-        const order = await lockOrder(db, orderId);
+      return tx(async (db) => {
+        const order = await lockOrder(db, orderId);                                   // 1. order
         if (order.status !== "packed") throw conflict("NOT_DISPATCHABLE", `Order is "${order.status}" — only packed orders can be assigned.`);
         assertPaymentCleared(order);
         if (await repo.activeForOrder(db, orderId)) throw conflict("ALREADY_ASSIGNED", "This order already has a rider.");
-        const rider = await repo.getRider(db, body.riderId, { forUpdate: true });
-        if (!rider) throw notFound("RIDER_NOT_FOUND", "Rider not found");
-        const d = await openAssignment(db, { actor, order, rider });
+        const rider = await riderAccess.requireAssignable(db, body.riderId, { lock: true }); // 2. rider: active user + role + permission + active profile
+        const d = await openAssignment(db, { actor, order, rider });                  // 3. delivery (new row)
         await moveOrder(db, order, "assigned", { patch: { partner: partnerOf(rider) } });
         await repo.addEvent(db, { deliveryId: d.id, orderId, type: "assigned", actorId: actor.id, note: rider.full_name });
         await tell(db, order, "delivery.assigned", { riderName: rider.full_name });
@@ -268,32 +315,48 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
       });
     },
 
-    /** Take the order off its rider (before pickup) and put it back in the packed queue. */
+    /**
+     * Take the order off its rider and put it back in the packed queue. Normally only before pickup. The one exception:
+     * if the rider can no longer operate (account suspended, role or permission removed, profile deactivated) the parcel
+     * would otherwise be stranded — nobody could complete or fail it — so dispatch may recover it even after pickup.
+     */
     async unassign(actor, deliveryId, body, ctx) {
       if (!can(actor, "delivery:manage")) throw forbidden();
-      return withTx(async (db) => {
-        const d = await repo.getDelivery(db, deliveryId, { forUpdate: true });
+      return tx(async (db) => {
+        const ref = await repo.getDeliveryRef(db, deliveryId);
+        if (!ref) throw notFound("DELIVERY_NOT_FOUND", "Delivery not found");
+        const order = await lockOrder(db, ref.order_id);                              // 1. order
+        const d = await repo.getDelivery(db, deliveryId, { forUpdate: true });        // 3. delivery
         if (!d) throw notFound("DELIVERY_NOT_FOUND", "Delivery not found");
-        if (!["assigned", "accepted"].includes(d.status)) throw conflict("CANNOT_UNASSIGN", d.status === "picked_up" ? "The rider already has the order — they must complete it or report it undeliverable." : `This delivery is "${d.status}".`);
-        const order = await lockOrder(db, d.order_id);
-        await repo.updateDelivery(db, d.id, { status: "cancelled", cancelReason: `unassigned${body?.reason ? `: ${body.reason}` : ""}`, closedAt: clock() });
-        await moveOrder(db, order, "packed", { note: "Rider unassigned", patch: { partner: null } });
+        let recovering = false;
+        if (d.status === "picked_up") {
+          const riderRow = await repo.getRider(db, d.rider_id);
+          if (riderRow && riderAccess.verdictFor(riderRow).ok) throw conflict("CANNOT_UNASSIGN", "The rider already has the order — they must complete it or report it undeliverable.");
+          recovering = true;
+        } else if (!BEFORE_PICKUP.includes(d.status)) {
+          throw conflict("CANNOT_UNASSIGN", `This delivery is "${d.status}".`);
+        }
+        const why = body?.reason ? `: ${body.reason}` : "";
+        await repo.updateDelivery(db, d.id, { status: "cancelled", cancelReason: recovering ? `unassigned (rider no longer authorized)${why}` : `unassigned${why}`, closedAt: clock() });
+        if (recovering) await repo.purgeLocations(db, d.id);
+        await moveOrder(db, order, "packed", { note: recovering ? "Rider no longer authorized — recovered by dispatch" : "Rider unassigned", patch: { partner: null } });
         await repo.addEvent(db, { deliveryId: d.id, orderId: order.id, type: "unassigned", actorId: actor.id, note: body?.reason ?? null });
-        await audit.log({ actor, action: "delivery.unassigned", entityType: "delivery", entityId: d.id, newValue: { orderId: order.id, reason: body?.reason ?? null } }, ctx, db);
+        await audit.log({ actor, action: "delivery.unassigned", entityType: "delivery", entityId: d.id, newValue: { orderId: order.id, reason: body?.reason ?? null, recovered: recovering } }, ctx, db);
         return dto(db, d.id);
       });
     },
 
     async reassign(actor, deliveryId, body, ctx) {
       if (!can(actor, "delivery:manage")) throw forbidden();
-      return withTx(async (db) => {
-        const old = await repo.getDelivery(db, deliveryId, { forUpdate: true });
+      return tx(async (db) => {
+        const ref = await repo.getDeliveryRef(db, deliveryId);
+        if (!ref) throw notFound("DELIVERY_NOT_FOUND", "Delivery not found");
+        const order = await lockOrder(db, ref.order_id);                              // 1. order
+        const rider = await riderAccess.requireAssignable(db, body.riderId, { lock: true }); // 2. the NEW rider (the old one is only read)
+        const old = await repo.getDelivery(db, deliveryId, { forUpdate: true });      // 3. delivery
         if (!old) throw notFound("DELIVERY_NOT_FOUND", "Delivery not found");
-        if (!["assigned", "accepted"].includes(old.status)) throw conflict("CANNOT_REASSIGN", old.status === "picked_up" ? "The rider already has the order." : `This delivery is "${old.status}".`);
+        if (!BEFORE_PICKUP.includes(old.status)) throw conflict("CANNOT_REASSIGN", old.status === "picked_up" ? "The rider already has the order." : `This delivery is "${old.status}".`);
         if (old.rider_id === body.riderId) throw badRequest("SAME_RIDER", "That rider already has this delivery.");
-        const order = await lockOrder(db, old.order_id);
-        const rider = await repo.getRider(db, body.riderId, { forUpdate: true });
-        if (!rider) throw notFound("RIDER_NOT_FOUND", "Rider not found");
         await repo.updateDelivery(db, old.id, { status: "cancelled", cancelReason: "reassigned", closedAt: clock() });
         const d = await openAssignment(db, { actor, order, rider });
         await orders.updateStatus(db, order.id, order.status, { partner: partnerOf(rider) });
@@ -309,8 +372,8 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
     /** Unlocks the handover after too many wrong codes: fresh nonce (so a NEW code) and a zeroed counter. */
     async resetOtp(actor, orderId, ctx) {
       if (!can(actor, "delivery:manage")) throw forbidden();
-      return withTx(async (db) => {
-        const order = await lockOrder(db, orderId);
+      return tx(async (db) => {
+        const order = await lockOrder(db, orderId);                                   // order only
         if (!order.otp_required) throw conflict("NO_OTP", "This order doesn't use a handover code.");
         if (["delivered", "cancelled", "returned"].includes(order.status)) throw conflict("ALREADY_FINAL", "This order is already closed.");
         await orders.updateStatus(db, order.id, order.status, { otpNonce: codes.newNonce(), otpAttempts: 0 });
@@ -334,8 +397,8 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
     /** Riders are ordinary user accounts + the `delivery` role + a profile row. Needs BOTH delivery:manage and roles:assign. */
     async createRider(actor, body, ctx) {
       if (!can(actor, "delivery:manage") || !can(actor, "roles:assign")) throw forbidden();
-      return withTx(async (db) => {
-        const user = await users.lockById(db, body.userId);
+      return tx(async (db) => {
+        const user = await users.lockById(db, body.userId);                           // user (first in the global order)
         if (!user) throw notFound("USER_NOT_FOUND", "User not found");
         if (user.status !== "active") throw conflict("USER_INACTIVE", "That account is not active");
         if (await repo.getRiderByUser(db, user.id)) throw conflict("RIDER_EXISTS", "That user is already a rider");
@@ -348,8 +411,8 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
 
     async updateRider(actor, id, body, ctx) {
       if (!can(actor, "delivery:manage")) throw forbidden();
-      return withTx(async (db) => {
-        const rider = await repo.getRider(db, id, { forUpdate: true });
+      return tx(async (db) => {
+        const rider = await repo.getRider(db, id, { forUpdate: true });               // rider only
         if (!rider) throw notFound("RIDER_NOT_FOUND", "Rider not found");
         const patch = { ...body };
         if (body.status === "suspended") {
@@ -363,20 +426,25 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
     },
 
     // =============================================================== customer / staff: tracking
-    /** Owner, or staff who can see every order / manage dispatch. Location only while the run is live. */
+    /**
+     * Owner, or staff who can see every order / manage dispatch. The rider's PRECISE position goes only to the owner and
+     * to dispatch (delivery:manage) — other order-readers (support, accounts) see status and history but never coordinates —
+     * and only while the run is live (picked up).
+     */
     async tracking(actor, orderId) {
       const order = await orders.getById(pool, orderId);
-      const staff = can(actor, "delivery:manage");
-      if (!order || (order.user_id !== actor?.id && !staff && !can(actor, "orders:read_all"))) throw notFound("ORDER_NOT_FOUND", "Order not found");
+      const owner = !!order && order.user_id === actor?.id;
+      const dispatcher = can(actor, "delivery:manage");
+      if (!order || (!owner && !dispatcher && !can(actor, "orders:read_all"))) throw notFound("ORDER_NOT_FOUND", "Order not found");
       const [active, events, failed] = await Promise.all([repo.activeForOrder(pool, orderId), repo.eventsForOrder(pool, orderId), repo.countFailedForOrder(pool, orderId)]);
-      const live = active?.status === "picked_up" && active.last_lat != null;
+      const live = (owner || dispatcher) && active?.status === "picked_up" && active.last_lat != null;
       return {
         orderId, orderStatus: order.status, failedAttempts: failed,
         delivery: active ? {
           status: active.status, rider: order.partner ?? null,
           location: live ? { lat: active.last_lat, lng: active.last_lng, accuracy: active.last_accuracy ?? null, updatedAt: active.last_located_at } : null,
         } : null,
-        events: events.filter((e) => staff || CUSTOMER_EVENTS.includes(e.type)).map((e) => toEventDto(e, { staff })),
+        events: events.filter((e) => dispatcher || CUSTOMER_EVENTS.includes(e.type)).map((e) => toEventDto(e, { staff: dispatcher })),
       };
     },
   };

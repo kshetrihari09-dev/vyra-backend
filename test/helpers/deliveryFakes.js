@@ -1,3 +1,4 @@
+import { ROLES } from "../../src/config/permissions.js";
 import { createFakeCommerce } from "./commerceFakes.js";
 
 /** Commerce fakes + an in-memory delivery repository that enforces the same rules the SQL does (one active delivery per order). */
@@ -14,7 +15,14 @@ export function createFakeDelivery() {
       payment_status: o.payment_status, otp_required: o.otp_required, eta: o.eta, order_address: o.address, rider_name: r.full_name,
       item_count: (db.orderItems.get(o.id) ?? []).length };
   };
-  const withName = (r) => r && { ...r, full_name: db.users.get(r.user_id)?.name ?? "Rider" };
+  const rolesOf = (userId) => db.userRoles.filter((r) => r.userId === userId).map((r) => r.role);
+  const permsOf = (userId) => [...new Set(rolesOf(userId).flatMap((r) => ROLES[r]?.permissions ?? []))];
+  const activeCount = (riderId) => db.deliveries.filter((d) => d.rider_id === riderId && ACTIVE.includes(d.status)).length;
+  /** Mirrors RIDER_SELECT in the real repository: the profile + the owning user's status / roles / permissions + live count. */
+  const withName = (r) => r && {
+    ...r, full_name: db.users.get(r.user_id)?.name ?? "Rider", user_status: db.users.get(r.user_id)?.status ?? "active",
+    roles: rolesOf(r.user_id), permissions: permsOf(r.user_id), active_count: activeCount(r.id),
+  };
 
   const delivery = {
     async getRider(_d, id) { return withName(db.riders.find((r) => r.id === id)) ?? null; },
@@ -28,7 +36,9 @@ export function createFakeDelivery() {
       for (const [k, col] of Object.entries({ phone: "phone", vehicle: "vehicle", status: "status", isAvailable: "is_available" })) if (patch[k] !== undefined) r[col] = patch[k];
       return withName(r);
     },
-    async listRiders() { return db.riders.map((r) => ({ ...withName(r), active_count: db.deliveries.filter((d) => d.rider_id === r.id && ACTIVE.includes(d.status)).length })); },
+    async listRiders() { return db.riders.map(withName); },
+    async setUnavailableForUser(_d, userId) { let n = 0; for (const r of db.riders) if (r.user_id === userId && r.is_available) { r.is_available = false; n++; } return n; },
+    async getDeliveryRef(_d, id) { const d = db.deliveries.find((x) => x.id === id); return d ? { id: d.id, order_id: d.order_id, rider_id: d.rider_id } : null; },
     async countActiveForRider(_d, riderId) { return db.deliveries.filter((d) => d.rider_id === riderId && ACTIVE.includes(d.status)).length; },
 
     async insertDelivery(_d, { orderId, riderId, status, assignedBy = null, selfClaimed = false, acceptedAt = null }) {
@@ -63,8 +73,14 @@ export function createFakeDelivery() {
     async eventsForOrder(_d, orderId) { return db.events.filter((e) => e.order_id === orderId); },
   };
 
-  const users = { async lockById(_d, id) { const u = db.users.get(id); return u ? { id, status: u.status } : null; } };
-  const roles = { async addUserRole(_d, userId, role) { db.userRoles.push({ userId, role }); } };
+  const users = {
+    async lockById(_d, id) { const u = db.users.get(id); return u ? { id, status: u.status } : null; },
+    async getAccess(_d, id) { const u = db.users.get(id); return u ? { id, full_name: u.name, status: u.status, roles: rolesOf(id), permissions: permsOf(id) } : null; },
+  };
+  const roles = {
+    async addUserRole(_d, userId, role) { if (!db.userRoles.some((r) => r.userId === userId && r.role === role)) db.userRoles.push({ userId, role }); },
+    removeUserRole(userId, role) { db.userRoles = db.userRoles.filter((r) => !(r.userId === userId && r.role === role)); },
+  };
   // Payments are their own service (payments.test.js); here we only need to observe what delivery asks of it.
   const payments = {
     async createForOrder() {},

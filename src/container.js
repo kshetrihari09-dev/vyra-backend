@@ -42,6 +42,7 @@ import { createPrescriptionsService } from "./services/prescriptions.service.js"
 import { createSellersService } from "./services/sellers.service.js";
 import { createSellerApplicationsService } from "./services/sellerApplications.service.js";
 import { createDeliveryService } from "./services/delivery.service.js";
+import { createRiderAccess } from "./services/riderAccess.service.js";
 import { createSellerPayoutsService } from "./services/sellerPayouts.service.js";
 import { createCodProvider } from "./services/payments/cod.provider.js";
 import { createManualProvider } from "./services/payments/manual.provider.js";
@@ -114,7 +115,9 @@ export function createContainer(config, overrides = {}) {
   // The handover code is derived from a subkey of DATA_ENCRYPTION_KEY, never stored (utils/deliveryCode.js).
   const deliveryCodes = createDeliveryCodes(config.security.dataEncryptionKey);
   services.orders = createOrdersService({ pool, withTx, repos, pricing, audit, prescriptions: services.prescriptions, payments: services.payments, codes: deliveryCodes, notifications });
-  services.delivery = createDeliveryService({ pool, withTx, repos, audit, payments: services.payments, codes: deliveryCodes, notifications });
+  // The single rider-authorisation service: used by the /rider/* middleware AND by every delivery service call.
+  services.riderAccess = createRiderAccess({ repos });
+  services.delivery = createDeliveryService({ pool, withTx, repos, audit, payments: services.payments, codes: deliveryCodes, notifications, riderAccess: services.riderAccess });
 
   const encryption = createEncryption(config.security.dataEncryptionKey);
   services.sellers = createSellersService({ pool, withTx, repos, encryption, audit });

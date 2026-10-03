@@ -11,6 +11,8 @@ import { createFakeDelivery, dispatcher, dispatcherNoRoles, riderActor } from ".
 import { fakeAudit } from "../helpers/fakes.js";
 import { recordingNotifications } from "../helpers/notificationFakes.js";
 import { TEMPLATES } from "../../src/notifications/templates.js";
+import { REASON, RIDER_STATE, evaluateRider, riderState } from "../../src/domain/riderEligibility.js";
+import { toDeliveryDto } from "../../src/models/delivery.model.js";
 
 const ctx = { ip: "203.0.113.5", requestId: "r" };
 const codes = createDeliveryCodes(Buffer.alloc(32, 7).toString("base64"));
@@ -106,8 +108,10 @@ describe("riders", () => {
     assert.ok(e.audit.entries.some((a) => a.action === "rider.created"));
   });
 
-  it("a user without a rider profile is refused everywhere in the rider API", async () => {
+  it("a user who is allowed to be a rider but has no profile yet is told it isn't set up (NOT_A_RIDER), everywhere in the rider API", async () => {
     const e = setup();
+    e.db.users.set("u-x", { name: "No Profile", status: "active" });
+    e.db.userRoles.push({ userId: "u-x", role: "delivery" }); // delivery role ⇒ delivery:rider permission, but no riders row
     for (const call of [() => e.delivery.me(riderActor("u-x")), () => e.delivery.listMine(riderActor("u-x")), () => e.delivery.claim(riderActor("u-x"), "o", ctx)]) {
       await assert.rejects(call(), { code: "NOT_A_RIDER" });
     }
@@ -542,5 +546,357 @@ describe("notifications raised by delivery", () => {
     const before = e.notifications.emitted.length;
     await assert.rejects(e.delivery.deliver(riderActor("u-r1"), id, { otp: wrongCode(e, o.id), cashCollected: 1 }, ctx), { code: "OTP_MISMATCH" });
     assert.equal(e.notifications.emitted.length, before);
+  });
+});
+
+
+// ===================================================================================================================
+// Central rider validation — one rule, applied everywhere
+// ===================================================================================================================
+describe("rider validity (domain rule)", () => {
+  const user = { id: "u", status: "active", roles: ["delivery"], permissions: ["delivery:rider"] };
+  const profile = { user_id: "u", status: "active" };
+  const reason = (over) => evaluateRider({ user: { ...user, ...over.user }, rider: "rider" in over ? over.rider : profile }).reason;
+  it("accepts only when every condition holds", () => assert.deepEqual(evaluateRider({ user, rider: profile }), { ok: true }));
+  it("names the first failing condition", () => {
+    assert.equal(evaluateRider({ user: null, rider: profile }).reason, REASON.USER_MISSING);
+    assert.equal(reason({ user: { status: "suspended" } }), REASON.USER_SUSPENDED);
+    assert.equal(reason({ user: { status: "inactive" } }), REASON.USER_DEACTIVATED);
+    assert.equal(reason({ user: { roles: ["warehouse"] } }), REASON.ROLE_MISSING);
+    assert.equal(reason({ user: { permissions: [] } }), REASON.PERMISSION_MISSING); // role still there, permission gone
+    assert.equal(reason({ user: {}, rider: null }), REASON.PROFILE_MISSING);
+    assert.equal(reason({ user: {}, rider: { user_id: "someone-else", status: "active" } }), REASON.PROFILE_MISMATCH);
+    assert.equal(reason({ user: {}, rider: { user_id: "u", status: "suspended" } }), REASON.PROFILE_INACTIVE);
+  });
+  it("derives the display state the dispatcher UI shows", () => {
+    const row = (over = {}) => ({ user_id: "u", status: "active", is_available: true, active_count: 0, user_status: "active", roles: ["delivery"], permissions: ["delivery:rider"], ...over });
+    assert.equal(riderState(row()), RIDER_STATE.AVAILABLE);
+    assert.equal(riderState(row({ active_count: DELIVERY_RULES.maxActivePerRider })), RIDER_STATE.AT_CAPACITY);
+    assert.equal(riderState(row({ is_available: false })), RIDER_STATE.OFF_DUTY);
+    assert.equal(riderState(row({ status: "suspended" })), RIDER_STATE.INACTIVE);
+    assert.equal(riderState(row({ user_status: "suspended" })), RIDER_STATE.SUSPENDED);
+    assert.equal(riderState(row({ roles: [] })), RIDER_STATE.NOT_AUTHORIZED);
+    assert.equal(riderState(row({ permissions: [] })), RIDER_STATE.NOT_AUTHORIZED);
+    // an unauthorised rider is never "available", whatever their profile flags say
+    assert.equal(riderState(row({ roles: [], is_available: true })), RIDER_STATE.NOT_AUTHORIZED);
+  });
+});
+
+describe("rider authorization is re-checked from the user's CURRENT role/permission/status on every rider action", () => {
+  /** A rider with one live delivery in each state we need, so every action has something real to act on. */
+  async function ready() {
+    const e = setup(); const rider = await makeRider(e, "u-r1");
+    const o1 = await packedOrder(e); const o2 = await packedOrder(e); const o3 = await packedOrder(e);
+    const assigned = await e.delivery.assign(dispatcher, o1.id, { riderId: rider.id }, ctx);
+    const out = await toOutForDelivery(e, o2, rider.id, "u-r1");
+    return { e, rider, assigned, out, claimable: o3 };
+  }
+  const actions = (e, { assigned, out, claimable }) => ({
+    me: () => e.delivery.me(riderActor("u-r1")),
+    availability: () => e.delivery.setAvailability(riderActor("u-r1"), true),
+    list: () => e.delivery.listMine(riderActor("u-r1"), {}),
+    available: () => e.delivery.listClaimable(riderActor("u-r1")),
+    claim: () => e.delivery.claim(riderActor("u-r1"), claimable.id, ctx),
+    accept: () => e.delivery.accept(riderActor("u-r1"), assigned.id, ctx),
+    decline: () => e.delivery.decline(riderActor("u-r1"), assigned.id, {}, ctx),
+    pickup: () => e.delivery.pickup(riderActor("u-r1"), assigned.id, ctx),
+    location: () => e.delivery.updateLocation(riderActor("u-r1"), out, { lat: 27.7, lng: 85.3 }),
+    deliver: () => e.delivery.deliver(riderActor("u-r1"), out, { otp: "0000" }, ctx),
+    fail: () => e.delivery.fail(riderActor("u-r1"), out, { reason: "customer_unreachable" }, ctx),
+  });
+  const deny = async (e, ctxIds, code) => {
+    for (const [name, call] of Object.entries(actions(e, ctxIds))) await assert.rejects(call(), { code }, name);
+  };
+  const ids = (x) => ({ assigned: x.assigned, out: x.out, claimable: x.claimable });
+
+  it("an active rider is allowed", async () => {
+    const x = await ready();
+    assert.equal((await x.e.delivery.me(riderActor("u-r1"))).state, "available");
+    assert.equal((await x.e.delivery.listMine(riderActor("u-r1"), {})).length, 2);
+  });
+  it("a suspended / deactivated user is denied everywhere", async () => {
+    const x = await ready();
+    x.e.db.users.get("u-r1").status = "suspended";
+    await deny(x.e, ids(x), "RIDER_SUSPENDED");
+  });
+  it("removing the delivery role denies everywhere — the riders row is not authority", async () => {
+    const x = await ready();
+    x.e.db.userRoles = x.e.db.userRoles.filter((r) => !(r.userId === "u-r1" && r.role === "delivery"));
+    assert.equal(x.e.db.riders.length, 1, "profile still exists");
+    await deny(x.e, ids(x), "RIDER_NOT_AUTHORIZED");
+  });
+  it("a role that doesn't carry delivery:rider denies everywhere", async () => {
+    const x = await ready();
+    x.e.db.userRoles = x.e.db.userRoles.filter((r) => r.userId !== "u-r1");
+    x.e.db.userRoles.push({ userId: "u-r1", role: "customer" });
+    await deny(x.e, ids(x), "RIDER_NOT_AUTHORIZED");
+  });
+  it("a missing rider profile is NOT_A_RIDER (the setup message); a suspended profile is denied", async () => {
+    const x = await ready();
+    x.e.db.riders[0].status = "suspended";
+    await deny(x.e, ids(x), "RIDER_SUSPENDED");
+    x.e.db.riders.length = 0;
+    await deny(x.e, ids(x), "NOT_A_RIDER");
+  });
+  it("a customer with no delivery role is simply not authorised (and learns nothing about profiles)", async () => {
+    const x = await ready(); x.e.db.users.set("u-c", { name: "C", status: "active" });
+    await assert.rejects(x.e.delivery.me(riderActor("u-c")), { code: "RIDER_NOT_AUTHORIZED" });
+  });
+  it("an invalid rider is refused BEFORE the order is even looked up (no order-id probing)", async () => {
+    const x = await ready(); x.e.db.users.get("u-r1").status = "suspended";
+    await assert.rejects(x.e.delivery.claim(riderActor("u-r1"), "no-such-order", ctx), { code: "RIDER_SUSPENDED" });
+  });
+});
+
+describe("dispatcher assignment validates the target rider", () => {
+  it("assigns to a valid rider", async () => {
+    const e = setup(); const r = await makeRider(e, "u-r1"); const o = await packedOrder(e);
+    const d = await e.delivery.assign(dispatcher, o.id, { riderId: r.id }, ctx);
+    assert.equal(d.status, "assigned");
+  });
+  const MSG = "Rider is inactive or no longer authorized for delivery.";
+  const breakers = {
+    "suspended user": (e) => { e.db.users.get("u-r1").status = "suspended"; },
+    "deactivated user": (e) => { e.db.users.get("u-r1").status = "inactive"; },
+    "removed delivery role": (e) => { e.db.userRoles = e.db.userRoles.filter((r) => r.userId !== "u-r1"); },
+    "inactive rider profile": (e) => { e.db.riders[0].status = "suspended"; },
+  };
+  for (const [name, breakIt] of Object.entries(breakers)) {
+    it(`rejects ${name} on assign AND reassign, leaving the order untouched`, async () => {
+      const e = setup(); const r1 = await makeRider(e, "u-r1"); const r2 = await makeRider(e, "u-r2");
+      const o = await packedOrder(e); const o2 = await packedOrder(e);
+      const d = await e.delivery.assign(dispatcher, o2.id, { riderId: r2.id }, ctx);
+      breakIt(e);
+      await assert.rejects(e.delivery.assign(dispatcher, o.id, { riderId: r1.id }, ctx), (err) => err.status === 409 && err.message === MSG);
+      assert.equal(statusOf(e, o.id), "packed");
+      await assert.rejects(e.delivery.reassign(dispatcher, d.id, { riderId: r1.id }, ctx), (err) => err.message === MSG);
+      assert.equal(e.db.deliveries.find((x) => x.id === d.id).status, "assigned");
+    });
+  }
+  it("rejects a rider at capacity, with a clear message", async () => {
+    const e = setup(); const r = await makeRider(e, "u-r1");
+    for (let i = 0; i < DELIVERY_RULES.maxActivePerRider; i++) await e.delivery.assign(dispatcher, (await packedOrder(e)).id, { riderId: r.id }, ctx);
+    const extra = await packedOrder(e);
+    await assert.rejects(e.delivery.assign(dispatcher, extra.id, { riderId: r.id }, ctx), { code: "RIDER_BUSY", message: /reached the delivery limit/ });
+  });
+  it("the rider list reports a derived state and capacity for the dispatcher UI", async () => {
+    const e = setup(); const r = await makeRider(e, "u-r1"); await makeRider(e, "u-r2", { available: false });
+    for (let i = 0; i < DELIVERY_RULES.maxActivePerRider; i++) await e.delivery.assign(dispatcher, (await packedOrder(e)).id, { riderId: r.id }, ctx);
+    e.db.userRoles = e.db.userRoles.filter((x) => x.userId !== "u-r2");
+    const list = await e.delivery.listRiders(dispatcher);
+    const byUser = Object.fromEntries(list.map((x) => [x.userId, x]));
+    assert.equal(byUser["u-r1"].state, "at_capacity");
+    assert.equal(byUser["u-r1"].activeCount, DELIVERY_RULES.maxActivePerRider);
+    assert.equal(byUser["u-r1"].capacity, DELIVERY_RULES.maxActivePerRider);
+    assert.equal(byUser["u-r1"].canTakeDelivery, false);
+    assert.equal(byUser["u-r2"].state, "not_authorized");
+    assert.equal(byUser["u-r1"].vehicleType, "Scooter"); assert.equal(byUser["u-r1"].vehicleNumber, "MC-4418");
+  });
+  it("unassign still works on a rider who is no longer authorised (so their work can be moved)", async () => {
+    const e = setup(); const r = await makeRider(e, "u-r1"); const o = await packedOrder(e);
+    const d = await e.delivery.assign(dispatcher, o.id, { riderId: r.id }, ctx);
+    e.db.userRoles = e.db.userRoles.filter((x) => x.userId !== "u-r1");
+    await e.delivery.unassign(dispatcher, d.id, {}, ctx);
+    assert.equal(statusOf(e, o.id), "packed");
+  });
+  it("a parcel stranded with a de-authorised rider can be recovered by dispatch — but never taken from a valid rider", async () => {
+    const e = setup(); const r = await makeRider(e, "u-r1"); const o = await packedOrder(e);
+    const id = await toOutForDelivery(e, o, r.id, "u-r1");
+    await assert.rejects(e.delivery.unassign(dispatcher, id, {}, ctx), { code: "CANNOT_UNASSIGN" }); // valid rider: still theirs
+    e.db.users.get("u-r1").status = "suspended";
+    await e.delivery.unassign(dispatcher, id, {}, ctx);
+    assert.equal(statusOf(e, o.id), "packed");
+    assert.equal(e.db.deliveries.find((d) => d.id === id).status, "cancelled");
+    assert.equal(e.db.locations.filter((l) => l.delivery_id === id).length, 0, "location trail purged");
+  });
+});
+
+describe("claiming", () => {
+  it("a second rider claiming a claimed order gets a safe conflict and no duplicate delivery exists", async () => {
+    const e = setup(); await makeRider(e, "u-r1"); await makeRider(e, "u-r2"); const o = await packedOrder(e);
+    await e.delivery.claim(riderActor("u-r1"), o.id, ctx);
+    await assert.rejects(e.delivery.claim(riderActor("u-r2"), o.id, ctx), (err) => err.status === 409 && err.message === "Order is already assigned to another rider.");
+    assert.equal(e.db.deliveries.filter((d) => d.order_id === o.id && ["assigned", "accepted", "picked_up"].includes(d.status)).length, 1);
+  });
+  it("the same rider double-submitting is told they already have it", async () => {
+    const e = setup(); await makeRider(e, "u-r1"); const o = await packedOrder(e);
+    await e.delivery.claim(riderActor("u-r1"), o.id, ctx);
+    await assert.rejects(e.delivery.claim(riderActor("u-r1"), o.id, ctx), { message: "You already have this delivery." });
+  });
+  it("an order that isn't packed is 'no longer available'", async () => {
+    const e = setup(); await makeRider(e, "u-r1"); const o = await packedOrder(e);
+    e.db.orders.find((x) => x.id === o.id).status = "cancelled";
+    await assert.rejects(e.delivery.claim(riderActor("u-r1"), o.id, ctx), { code: "NOT_DISPATCHABLE", message: "Delivery is no longer available." });
+  });
+  it("capacity is enforced on claim too", async () => {
+    const e = setup(); await makeRider(e, "u-r1");
+    for (let i = 0; i < DELIVERY_RULES.maxActivePerRider; i++) await e.delivery.claim(riderActor("u-r1"), (await packedOrder(e)).id, ctx);
+    await assert.rejects(e.delivery.claim(riderActor("u-r1"), (await packedOrder(e)).id, ctx), { code: "RIDER_BUSY" });
+  });
+});
+
+describe("state machine — every illegal move is refused", () => {
+  it("walks the happy path in order and each skipped step is refused", async () => {
+    const e = setup(); const r = await makeRider(e, "u-r1"); const o = await packedOrder(e);
+    const a = riderActor("u-r1");
+    const d = await e.delivery.assign(dispatcher, o.id, { riderId: r.id }, ctx);
+    await assert.rejects(e.delivery.pickup(a, d.id, ctx), { code: "NOT_ACCEPTED" });            // assigned → picked_up skips accept
+    await assert.rejects(e.delivery.deliver(a, d.id, { otp: "0000" }, ctx), { code: "NOT_OUT_FOR_DELIVERY" });
+    await assert.rejects(e.delivery.fail(a, d.id, { reason: "other" }, ctx), { code: "NOT_OUT_FOR_DELIVERY" });
+    await e.delivery.accept(a, d.id, ctx);
+    await assert.rejects(e.delivery.accept(a, d.id, ctx), { code: "NOT_OFFERED" });             // no re-accept
+    await assert.rejects(e.delivery.deliver(a, d.id, { otp: "0000" }, ctx), { code: "NOT_OUT_FOR_DELIVERY" }); // accepted → delivered skips pickup
+    await e.delivery.pickup(a, d.id, ctx);
+    await assert.rejects(e.delivery.pickup(a, d.id, ctx), { code: "NOT_ACCEPTED" });            // no double pickup
+    await assert.rejects(e.delivery.accept(a, d.id, ctx), { code: "NOT_OFFERED" });             // no backward move
+    await assert.rejects(e.delivery.decline(a, d.id, {}, ctx), { code: "CANNOT_DECLINE" });
+    await e.delivery.deliver(a, d.id, { otp: otpOf(e, o.id), cashCollected: Number(e.db.orders.find((x) => x.id === o.id).total) }, ctx);
+    for (const [name, call] of Object.entries({
+      deliver: () => e.delivery.deliver(a, d.id, { otp: otpOf(e, o.id), cashCollected: 1 }, ctx),
+      fail: () => e.delivery.fail(a, d.id, { reason: "other" }, ctx),
+      pickup: () => e.delivery.pickup(a, d.id, ctx),
+      accept: () => e.delivery.accept(a, d.id, ctx),
+      decline: () => e.delivery.decline(a, d.id, {}, ctx),
+      location: () => e.delivery.updateLocation(a, d.id, { lat: 1, lng: 1 }),
+    })) await assert.rejects(call(), (err) => err.status === 409, `${name} after delivered`);
+    assert.equal(statusOf(e, o.id), "delivered");
+  });
+  it("a delivered order cannot be assigned, claimed, reassigned or unassigned", async () => {
+    const e = setup(); const r = await makeRider(e, "u-r1"); await makeRider(e, "u-r2"); const o = await packedOrder(e);
+    const id = await toOutForDelivery(e, o, r.id, "u-r1");
+    await e.delivery.fail(riderActor("u-r1"), id, { reason: "customer_unreachable" }, ctx); // back to packed
+    assert.equal(statusOf(e, o.id), "packed");
+    const again = await e.delivery.assign(dispatcher, o.id, { riderId: r.id }, ctx);          // redispatch works
+    assert.equal(again.status, "assigned");
+    await assert.rejects(e.delivery.assign(dispatcher, o.id, { riderId: r.id }, ctx), { code: "NOT_DISPATCHABLE" }); // already active
+    await assert.rejects(e.delivery.claim(riderActor("u-r2"), o.id, ctx), { code: "NOT_DISPATCHABLE", message: "Order is already assigned to another rider." });
+    await assert.rejects(e.delivery.reassign(dispatcher, id, { riderId: r.id }, ctx), { code: "CANNOT_REASSIGN" }); // the failed delivery is closed
+  });
+  it("another rider cannot pick up, complete, fail, accept, decline or ping someone else's delivery", async () => {
+    const e = setup(); const r1 = await makeRider(e, "u-r1"); await makeRider(e, "u-r2");
+    const o = await packedOrder(e); const id = await toOutForDelivery(e, o, r1.id, "u-r1");
+    const other = riderActor("u-r2");
+    for (const [name, call] of Object.entries({
+      pickup: () => e.delivery.pickup(other, id, ctx), accept: () => e.delivery.accept(other, id, ctx),
+      decline: () => e.delivery.decline(other, id, {}, ctx), deliver: () => e.delivery.deliver(other, id, { otp: otpOf(e, o.id) }, ctx),
+      fail: () => e.delivery.fail(other, id, { reason: "other" }, ctx), location: () => e.delivery.updateLocation(other, id, { lat: 1, lng: 1 }),
+    })) await assert.rejects(call(), { code: "DELIVERY_NOT_FOUND" }, name);
+    assert.equal(statusOf(e, o.id), "out_for_delivery");
+  });
+});
+
+describe("handover code (OTP) hardening", () => {
+  async function run() {
+    const e = setup(); const r1 = await makeRider(e, "u-r1"); await makeRider(e, "u-r2");
+    const o = await packedOrder(e); const id = await toOutForDelivery(e, o, r1.id, "u-r1");
+    return { e, o, id, a: riderActor("u-r1"), total: Number(e.db.orders.find((x) => x.id === o.id).total) };
+  }
+  it("is never stored as plaintext, never in an API response, and never in an event, audit entry or notification", async () => {
+    const { e, o, id, a, total } = await run();
+    const code = otpOf(e, o.id);
+    assert.ok(!("otp" in e.db.orders.find((x) => x.id === o.id)), "no plaintext column");
+    await assert.rejects(e.delivery.deliver(a, id, { otp: wrongCode(e, o.id) }, ctx));
+    const done = await e.delivery.deliver(a, id, { otp: code, cashCollected: total }, ctx);
+    const everything = JSON.stringify([done, e.db.events, e.audit.entries ?? e.audit, e.notifications.sent ?? e.notifications]);
+    assert.ok(!everything.includes(`"${code}"`) && !everything.includes(`:${code}`) && !everything.includes(`otp":"${code}`), "code leaked");
+  });
+  it("a second rider can't use the code, and the failed attempt doesn't burn the owner's attempts", async () => {
+    const { e, o, id, total, a } = await run();
+    await assert.rejects(e.delivery.deliver(riderActor("u-r2"), id, { otp: otpOf(e, o.id), cashCollected: total }, ctx), { code: "DELIVERY_NOT_FOUND" });
+    assert.equal(e.db.orders.find((x) => x.id === o.id).otp_attempts, 0);
+    assert.equal((await e.delivery.deliver(a, id, { otp: otpOf(e, o.id), cashCollected: total }, ctx)).status, "delivered");
+  });
+  it("the code can't be replayed once the delivery is complete", async () => {
+    const { e, o, id, a, total } = await run();
+    const code = otpOf(e, o.id);
+    await e.delivery.deliver(a, id, { otp: code, cashCollected: total }, ctx);
+    await assert.rejects(e.delivery.deliver(a, id, { otp: code, cashCollected: total }, ctx), { code: "NOT_OUT_FOR_DELIVERY", message: /already complete/ });
+  });
+  it("5 wrong codes lock it, the right code is then refused, and a reset issues a NEW code", async () => {
+    const { e, o, id, a, total } = await run();
+    const before = otpOf(e, o.id);
+    for (let i = 0; i < DELIVERY_RULES.otpMaxAttempts; i++) await assert.rejects(e.delivery.deliver(a, id, { otp: wrongCode(e, o.id) }, ctx), { code: "OTP_MISMATCH" });
+    await assert.rejects(e.delivery.deliver(a, id, { otp: before, cashCollected: total }, ctx), { code: "OTP_LOCKED" });
+    await e.delivery.resetOtp(dispatcher, o.id, ctx);
+    assert.equal(e.db.orders.find((x) => x.id === o.id).otp_attempts, 0);
+    assert.notEqual(otpOf(e, o.id), before);
+    await assert.rejects(e.delivery.deliver(a, id, { otp: before === otpOf(e, o.id) ? "x" : before, cashCollected: total }, ctx), { code: "OTP_MISMATCH" }); // the old code is dead
+    assert.equal((await e.delivery.deliver(a, id, { otp: otpOf(e, o.id), cashCollected: total }, ctx)).status, "delivered");
+  });
+  it("a de-authorised rider can't complete a delivery even with the right code", async () => {
+    const { e, o, id, a, total } = await run();
+    e.db.userRoles = e.db.userRoles.filter((x) => x.userId !== "u-r1");
+    await assert.rejects(e.delivery.deliver(a, id, { otp: otpOf(e, o.id), cashCollected: total }, ctx), { code: "RIDER_NOT_AUTHORIZED" });
+    assert.equal(statusOf(e, o.id), "out_for_delivery");
+  });
+});
+
+describe("rider location", () => {
+  it("accepts a ping from the owner while out for delivery, and purges the trail on completion", async () => {
+    const e = setup(); const r = await makeRider(e, "u-r1"); const o = await packedOrder(e);
+    const id = await toOutForDelivery(e, o, r.id, "u-r1");
+    assert.deepEqual(await e.delivery.updateLocation(riderActor("u-r1"), id, { lat: 27.7, lng: 85.3 }), { accepted: true });
+    assert.equal(e.db.locations.length, 1);
+    const total = Number(e.db.orders.find((x) => x.id === o.id).total);
+    await e.delivery.deliver(riderActor("u-r1"), id, { otp: otpOf(e, o.id), cashCollected: total }, ctx);
+    assert.equal(e.db.locations.length, 0);
+    assert.equal(e.db.deliveries.find((d) => d.id === id).last_lat ?? null, null, "live position cleared too");
+  });
+  it("is purged when the delivery fails", async () => {
+    const e = setup(); const r = await makeRider(e, "u-r1"); const o = await packedOrder(e);
+    const id = await toOutForDelivery(e, o, r.id, "u-r1");
+    await e.delivery.updateLocation(riderActor("u-r1"), id, { lat: 27.7, lng: 85.3 });
+    await e.delivery.fail(riderActor("u-r1"), id, { reason: "customer_unreachable" }, ctx);
+    assert.equal(e.db.locations.length, 0);
+  });
+  it("refuses another rider, a de-authorised rider, and a delivery that's only assigned", async () => {
+    const e = setup(); const r = await makeRider(e, "u-r1"); await makeRider(e, "u-r2");
+    const o = await packedOrder(e); const o2 = await packedOrder(e);
+    const id = await toOutForDelivery(e, o, r.id, "u-r1");
+    const waiting = await e.delivery.assign(dispatcher, o2.id, { riderId: r.id }, ctx);
+    await assert.rejects(e.delivery.updateLocation(riderActor("u-r2"), id, { lat: 1, lng: 1 }), { code: "DELIVERY_NOT_FOUND" });
+    await assert.rejects(e.delivery.updateLocation(riderActor("u-r1"), waiting.id, { lat: 1, lng: 1 }), { code: "NOT_TRACKING" });
+    e.db.userRoles = e.db.userRoles.filter((x) => x.userId !== "u-r1");
+    await assert.rejects(e.delivery.updateLocation(riderActor("u-r1"), id, { lat: 1, lng: 1 }), { code: "RIDER_NOT_AUTHORIZED" });
+  });
+  it("shows precise coordinates only to the order's owner and to dispatch — not to other order readers or strangers", async () => {
+    const e = setup(); const r = await makeRider(e, "u-r1"); const o = await packedOrder(e);
+    const id = await toOutForDelivery(e, o, r.id, "u-r1");
+    await e.delivery.updateLocation(riderActor("u-r1"), id, { lat: 27.7, lng: 85.3 });
+    assert.deepEqual((await e.delivery.tracking(customer, o.id)).delivery.location.lat, 27.7);
+    assert.equal((await e.delivery.tracking(dispatcher, o.id)).delivery.location.lat, 27.7);
+    assert.equal((await e.delivery.tracking(staffOrders, o.id)).delivery.location, null, "orders:read_all alone sees status, not coordinates");
+    await assert.rejects(e.delivery.tracking({ id: "u-stranger", permissions: [] }, o.id), { code: "ORDER_NOT_FOUND" });
+    await assert.rejects(e.delivery.tracking(riderActor("u-r1"), o.id), { code: "ORDER_NOT_FOUND" }, "even the rider reads tracking only through the rider API");
+  });
+});
+
+describe("rider data privacy", () => {
+  it("customer contact details are visible while the delivery is the rider's, and dropped once it is closed", async () => {
+    const e = setup(); const r = await makeRider(e, "u-r1"); const o = await packedOrder(e);
+    const d = await e.delivery.assign(dispatcher, o.id, { riderId: r.id }, ctx);
+    const open = (await e.delivery.listMine(riderActor("u-r1"), {}))[0];
+    assert.equal(open.order.shipTo.phone, "+1 555 0190");
+    await e.delivery.decline(riderActor("u-r1"), d.id, { reason: "too far" }, ctx);
+    const row = e.db.deliveries.find((x) => x.id === d.id);
+    const closed = toDeliveryDto({ ...(await e.repos.delivery.getDelivery({}, d.id)), ...row });
+    assert.deepEqual(Object.keys(closed.order.shipTo).sort(), ["city", "ward"]);
+    assert.ok(!JSON.stringify(closed).includes("Maple"), "no street");
+    assert.ok(!JSON.stringify(closed).includes("555 0190"), "no phone");
+  });
+  it("the claimable list never carries street, name or phone", async () => {
+    const e = setup(); await makeRider(e, "u-r1"); await packedOrder(e);
+    const text = JSON.stringify(await e.delivery.listClaimable(riderActor("u-r1")));
+    for (const secret of ["Maple", "555 0190", "Alex"]) assert.ok(!text.includes(secret), secret);
+  });
+});
+
+describe("admin changes revoke rider access at once", () => {
+  it("takes the rider off duty when the user is deactivated or loses the delivery role (repository hook)", async () => {
+    const e = setup(); await makeRider(e, "u-r1");
+    assert.equal(e.db.riders[0].is_available, true);
+    assert.equal(await e.repos.delivery.setUnavailableForUser({}, "u-r1"), 1);
+    assert.equal(e.db.riders[0].is_available, false);
+    assert.equal(await e.repos.delivery.setUnavailableForUser({}, "u-r1"), 0, "idempotent");
   });
 });

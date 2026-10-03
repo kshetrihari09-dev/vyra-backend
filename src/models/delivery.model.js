@@ -1,12 +1,36 @@
+import { DELIVERY_RULES } from "../config/delivery.js";
+import { evaluateRiderRow, riderState, RIDER_STATE } from "../domain/riderEligibility.js";
 import { toNumber } from "../utils/text.js";
 
-export const toRiderDto = (r) => ({
-  id: r.id, userId: r.user_id, name: r.full_name ?? null, phone: r.phone, vehicle: r.vehicle,
-  status: r.status, isAvailable: r.is_available,
-  ...(r.active_count !== undefined ? { activeCount: Number(r.active_count) } : {}),
-});
+/** `vehicle` is one text column, written as "Type · Plate" ("Bike · BA 12 PA 1234"). The UI wants the halves. */
+export function splitVehicle(vehicle) {
+  const [type, ...rest] = String(vehicle ?? "").split(" · ");
+  return { vehicleType: type.trim() || null, vehicleNumber: rest.length ? rest.join(" · ").trim() || null : null };
+}
 
-/** What a rider needs to do the job: full address and contact once a delivery is theirs. The handover code is NEVER here. */
+/** Deliveries still in the rider's hands. Anything else is closed: the customer's contact details are no longer theirs to hold. */
+const OPEN_DELIVERY = ["assigned", "accepted", "picked_up"];
+
+/**
+ * `state` / `canTakeDelivery` are computed here, from the same rules the backend enforces on assignment, so the UI shows
+ * what the server will actually accept. They are display hints — assigning to a rider is always re-validated server-side.
+ */
+export function toRiderDto(r) {
+  const capacity = DELIVERY_RULES.maxActivePerRider;
+  const state = riderState(r, { capacity });
+  return {
+    id: r.id, userId: r.user_id, name: r.full_name ?? null, phone: r.phone, vehicle: r.vehicle, ...splitVehicle(r.vehicle),
+    status: r.status, isAvailable: r.is_available,
+    activeCount: Number(r.active_count ?? 0), capacity,
+    authorized: evaluateRiderRow(r).ok, state, canTakeDelivery: state === RIDER_STATE.AVAILABLE,
+  };
+}
+
+/**
+ * What a rider needs to do the job: full address and contact WHILE a delivery is theirs. The handover code is NEVER here.
+ * Once the delivery is closed (delivered, failed, declined, unassigned, reassigned) the street, name and phone are dropped —
+ * only the area stays — so a rider's history can't be used as a customer directory.
+ */
 export function toDeliveryDto(r, { events } = {}) {
   const addr = r.order_address ?? {};
   return {
@@ -18,7 +42,9 @@ export function toDeliveryDto(r, { events } = {}) {
       number: r.order_number, status: r.order_status, storeId: r.branch_id, total: toNumber(r.order_total),
       paymentMethod: r.payment_method, collectCash: r.payment_method === "cod" && r.payment_status !== "paid",
       itemCount: r.item_count == null ? undefined : Number(r.item_count), otpRequired: r.otp_required, eta: r.eta,
-      shipTo: { name: addr.name, phone: addr.phone, line1: addr.line1, line2: addr.line2, city: addr.city, zip: addr.zip, ward: addr.ward, instructions: addr.instructions },
+      shipTo: OPEN_DELIVERY.includes(r.status)
+        ? { name: addr.name, phone: addr.phone, line1: addr.line1, line2: addr.line2, city: addr.city, zip: addr.zip, ward: addr.ward, instructions: addr.instructions }
+        : { city: addr.city, ward: addr.ward },
     },
     ...(events ? { events } : {}),
   };
