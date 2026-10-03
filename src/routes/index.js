@@ -20,6 +20,8 @@ import { paymentsRoutes } from "./payments.routes.js";
 import { prescriptionsRoutes } from "./prescriptions.routes.js";
 import { sellersRoutes } from "./sellers.routes.js";
 import { sellerApplicationsRoutes } from "./sellerApplications.routes.js";
+import { riderApplicationsRoutes } from "./riderApplications.routes.js";
+import { createRiderApplicationsController } from "../controllers/riderApplications.controller.js";
 import { sellerPayoutsRoutes } from "./sellerPayouts.routes.js";
 import { deliveryRoutes } from "./delivery.routes.js";
 import { notificationsRoutes } from "./notifications.routes.js";
@@ -37,6 +39,7 @@ export function createRoutes(container, limiters) {
   r.use("/", prescriptionsRoutes({ container, controller: createPrescriptionsController(container) }));
   r.use("/", sellersRoutes({ container, controller: createSellersController(container) }));
   r.use("/", sellerApplicationsRoutes({ container, controller: createSellerApplicationsController(container) }));
+  r.use("/", riderApplicationsRoutes({ container, controller: createRiderApplicationsController(container) }));
   r.use("/", sellerPayoutsRoutes({ container, controller: createSellerPayoutsController(container) }));
   r.use("/", deliveryRoutes({ container, controller: createDeliveryController(container) }));
   r.use("/", notificationsRoutes({ container, controller: createNotificationsController(container) }));

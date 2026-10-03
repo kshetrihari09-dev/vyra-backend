@@ -26,6 +26,8 @@ export function createApp(container) {
   app.use("/api/prescriptions", express.json({ limit: "14mb", ...rawBodyCapture }));
   // A shop application can carry up to 6 documents at 5 MB each (~40 MB once base64-encoded).
   app.use("/api/seller-applications", express.json({ limit: "45mb", ...rawBodyCapture }));
+  // A rider application carries up to 4 documents at 5 MB each (~28 MB once base64-encoded).
+  app.use("/api/rider-applications", express.json({ limit: "30mb", ...rawBodyCapture }));
   // Product photos: up to 5 browser-downscaled JPEGs as data URLs — bigger than the 100kb default, so this one path gets 8mb.
   app.use(/^\/api\/products\/[^/]+\/images$/, express.json({ limit: "8mb", ...rawBodyCapture }));
   app.use(express.json({ limit: "100kb", ...rawBodyCapture }));

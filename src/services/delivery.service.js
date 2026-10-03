@@ -3,6 +3,7 @@ import { toClaimableDto, toDeliveryDto, toEventDto, toRiderDto } from "../models
 import { assertPaymentCleared, assertTransition } from "../domain/orderRules.js";
 import { AppError, badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
 import { createRiderAccess } from "./riderAccess.service.js";
+import { createRiderProvisioning } from "./riderProvisioning.js";
 
 const can = (actor, perm) => !!actor?.permissions?.includes(perm);
 const cents = (n) => Math.round(Number(n) * 100);
@@ -49,7 +50,7 @@ function friendlyDbError(err) {
  *
  * Rider authorisation is NOT decided here: it is `riderAccess` (domain/riderEligibility.js), called on every path.
  */
-export function createDeliveryService({ pool, withTx, repos, audit, payments, codes, notifications = { emit: async () => null }, clock = () => new Date(), riderAccess = createRiderAccess({ repos }) }) {
+export function createDeliveryService({ pool, withTx, repos, audit, payments, codes, notifications = { emit: async () => null }, clock = () => new Date(), riderAccess = createRiderAccess({ repos }), provisionRider = createRiderProvisioning({ repos, audit }) }) {
   const { delivery: repo, orders, roles, users } = repos;
 
   /** `withTx` with PostgreSQL concurrency errors mapped to safe, specific conflicts. */
@@ -397,16 +398,7 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
     /** Riders are ordinary user accounts + the `delivery` role + a profile row. Needs BOTH delivery:manage and roles:assign. */
     async createRider(actor, body, ctx) {
       if (!can(actor, "delivery:manage") || !can(actor, "roles:assign")) throw forbidden();
-      return tx(async (db) => {
-        const user = await users.lockById(db, body.userId);                           // user (first in the global order)
-        if (!user) throw notFound("USER_NOT_FOUND", "User not found");
-        if (user.status !== "active") throw conflict("USER_INACTIVE", "That account is not active");
-        if (await repo.getRiderByUser(db, user.id)) throw conflict("RIDER_EXISTS", "That user is already a rider");
-        await roles.addUserRole(db, user.id, "delivery", actor.id);
-        const rider = await repo.insertRider(db, { userId: user.id, phone: body.phone, vehicle: body.vehicle });
-        await audit.log({ actor, action: "rider.created", entityType: "rider", entityId: rider.id, newValue: { userId: user.id, vehicle: body.vehicle } }, ctx, db);
-        return toRiderDto(rider);
-      });
+      return tx(async (db) => toRiderDto(await provisionRider(db, { actor, userId: body.userId, phone: body.phone, vehicle: body.vehicle }, ctx)));
     },
 
     async updateRider(actor, id, body, ctx) {

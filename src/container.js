@@ -41,6 +41,9 @@ import { createPaymentsService } from "./services/payments.service.js";
 import { createPrescriptionsService } from "./services/prescriptions.service.js";
 import { createSellersService } from "./services/sellers.service.js";
 import { createSellerApplicationsService } from "./services/sellerApplications.service.js";
+import { createRiderApplicationsService } from "./services/riderApplications.service.js";
+import { createRiderProvisioning } from "./services/riderProvisioning.js";
+import { createRiderApplicationsRepository } from "./repositories/riderApplications.repository.js";
 import { createDeliveryService } from "./services/delivery.service.js";
 import { createRiderAccess } from "./services/riderAccess.service.js";
 import { createSellerPayoutsService } from "./services/sellerPayouts.service.js";
@@ -78,6 +81,7 @@ export function createContainer(config, overrides = {}) {
     prescriptions: createPrescriptionsRepository(),
     sellers: createSellersRepository(),
     sellerApplications: createSellerApplicationsRepository(),
+    riderApplications: createRiderApplicationsRepository(),
     sellerPayouts: createSellerPayoutsRepository(),
     delivery: createDeliveryRepository(),
     notifications: createNotificationsRepository(),
@@ -117,11 +121,13 @@ export function createContainer(config, overrides = {}) {
   services.orders = createOrdersService({ pool, withTx, repos, pricing, audit, prescriptions: services.prescriptions, payments: services.payments, codes: deliveryCodes, notifications });
   // The single rider-authorisation service: used by the /rider/* middleware AND by every delivery service call.
   services.riderAccess = createRiderAccess({ repos });
-  services.delivery = createDeliveryService({ pool, withTx, repos, audit, payments: services.payments, codes: deliveryCodes, notifications, riderAccess: services.riderAccess });
+  const provisionRider = createRiderProvisioning({ repos, audit }); // one way to make a rider: admin-add and application-approval both use it
+  services.delivery = createDeliveryService({ pool, withTx, repos, audit, payments: services.payments, codes: deliveryCodes, notifications, riderAccess: services.riderAccess, provisionRider });
 
   const encryption = createEncryption(config.security.dataEncryptionKey);
   services.sellers = createSellersService({ pool, withTx, repos, encryption, audit });
   services.sellerApplications = createSellerApplicationsService({ pool, withTx, repos, storage, encryption, audit, notifications });
+  services.riderApplications = createRiderApplicationsService({ pool, withTx, repos, storage, encryption, audit, provisionRider, notifications });
   services.sellerPayouts = createSellerPayoutsService({ pool, withTx, repos, audit, notifications });
 
   // Background jobs: started by server.js (not here, so tests and scripts that build a container don't spawn timers).

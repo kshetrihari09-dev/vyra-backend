@@ -82,6 +82,22 @@ export const TEMPLATES = {
     title: () => "Refund not approved",
     message: (d) => `Your refund request for order ${d.number} wasn't approved${d.note ? `: ${d.note}` : "."}`,
   },
+  // ---- rider applications
+  "rider_application.approved": {
+    kind: "delivery", email: true,
+    title: () => "You're approved as a delivery rider",
+    message: () => "Sign in again, open the Delivery App from your profile, and switch to Available to start taking deliveries.",
+  },
+  "rider_application.rejected": {
+    kind: "delivery", email: true,
+    title: () => "Rider application not approved",
+    message: (d) => `Your rider application wasn't approved: ${d.reason}`,
+  },
+  "rider_application.correction_requested": {
+    kind: "delivery", email: true,
+    title: () => "Changes needed on your rider application",
+    message: (d) => `Please update your rider application: ${d.reason}`,
+  },
   // ---- sellers
   "seller_application.approved": {
     kind: "seller", email: true,
