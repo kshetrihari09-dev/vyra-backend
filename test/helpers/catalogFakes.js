@@ -34,16 +34,17 @@ export function createFakeCatalog() {
     async insert(_d, p) {
       if (db.products.some((x) => !x.deleted_at && x.sku.toLowerCase() === p.sku.toLowerCase())) throw Object.assign(new Error("dup"), { code: "23505", constraint: "products_sku_key" });
       const row = { id: p.id, name: p.name, slug: p.slug, category_id: p.categoryId, brand_id: p.brandId, seller_id: p.sellerId ?? null, description: p.description ?? "", price: p.price, sale_price: p.salePrice ?? null,
-        tax_percent: p.tax ?? 0, sku: p.sku, barcode: p.barcode ?? null, unit: p.unit, moq: p.moq, max_qty: p.maxQty, rating: 0, review_count: 0, sold_count: 0, status: p.status, delivery_available: true,
+        tax_percent: p.tax ?? 0, sku: p.sku, barcode: p.barcode ?? null, unit: p.unit, moq: p.moq, max_qty: p.maxQty, min_stock: p.minStock ?? 10, rating: 0, review_count: 0, sold_count: 0, status: p.status, delivery_available: true,
         prescription_required: !!p.flags?.prescriptionRequired, tags: p.tags ?? [], art: p.art ?? null, attributes: p.attributes ?? {}, version: ++version && 1, created_at: new Date("2026-09-20"), deleted_at: null };
       db.products.push(row); return row;
     },
     async update(_d, id, p) {
       const row = db.products.find((x) => x.id === id);
       Object.assign(row, { name: p.name, slug: p.slug, category_id: p.categoryId, brand_id: p.brandId, price: p.price, sale_price: p.salePrice ?? null, tax_percent: p.tax ?? 0, sku: p.sku,
-        status: p.status, attributes: p.attributes ?? {}, version: row.version + 1 });
+        status: p.status, attributes: p.attributes ?? {}, ...(p.minStock != null ? { min_stock: p.minStock } : {}), version: row.version + 1 });
       return row;
     },
+    async syncReorderLevel(_d, id, level) { for (const i of db.inventory.filter((x) => x.product_id === id)) i.reorder_level = level; },
     async softDelete(_d, id) { const r = db.products.find((x) => x.id === id); r.deleted_at = new Date(); return true; },
     async hydrate(_d, rows) {
       const variants = new Map(); const stock = new Map();

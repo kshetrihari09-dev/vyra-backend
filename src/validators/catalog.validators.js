@@ -100,6 +100,7 @@ const productShape = {
   categoryId: idSlug,
   brandId: idSlug.optional(),
   brandName: text(100).min(1).optional(),
+  sellerId: text(64).nullable().optional(), // honoured on create for catalogue managers only (sellers are pinned to their own shop)
   description: text(5000).default(""),
   price: money,
   salePrice: money.positive().nullable().optional(),
@@ -109,6 +110,7 @@ const productShape = {
   unit: text(30).min(1).default("piece"),
   moq: z.number().int().min(1).max(10_000).default(1),
   maxQty: z.number().int().min(1).max(10_000).default(10),
+  minStock: z.number().int().min(0).max(1_000_000).optional(), // omitted on edit = keep the current level
   status: z.enum(["active", "inactive", "pending_review", "rejected", "draft"]).default("active"),
   deliveryAvailable: z.boolean().default(true),
   tags: z.array(z.string().regex(/^[a-z0-9_-]{1,30}$/)).max(20).default([]),

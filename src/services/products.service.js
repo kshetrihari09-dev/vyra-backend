@@ -155,6 +155,11 @@ export function createProductsService({ pool, withTx, repos, audit, storage }) {
             if (!actor.sellerId) throw forbidden("NO_SHOP", "You need an active shop before you can list products");
             body = { ...body, sellerId: actor.sellerId, status: "pending_review" }; // a seller can never self-approve a new listing
           }
+          else if (body.sellerId) {
+            // Staff creating a listing on a shop's behalf: the shop must exist. (Previously sellerId was silently dropped
+            // here, so the product was saved with no owner and never appeared in any seller's console.)
+            if (repos.sellers && !(await repos.sellers.getById(db, body.sellerId))) throw badRequest("SELLER_NOT_FOUND", "That shop doesn't exist");
+          } else body = { ...body, sellerId: null };
           await checkCommon(db, body);
           await checkOpeningStock(db, actor, body);
           const brandId = await resolveBrand(db, body);
@@ -220,6 +225,7 @@ export function createProductsService({ pool, withTx, repos, audit, storage }) {
           }
 
           const row = await products.update(db, id, { ...body, brandId, slug, sellerId: before.seller_id });
+          if (body.minStock != null) await products.syncReorderLevel(db, id, row.min_stock);
           const afterDto = await load(db, row, actor);
 
           await audit.log({ actor, action: "product.updated", entityType: "product", entityId: id, oldValue: productAuditView(beforeDto), newValue: productAuditView(afterDto) }, ctx, db);
@@ -240,7 +246,6 @@ export function createProductsService({ pool, withTx, repos, audit, storage }) {
     /** Soft delete: the row stays so orders, stock history and audit entries keep resolving. */
     /** Replaces the product's photo list. Entries are existing storage keys (kept) or new data URLs (stored). */
     async setImages(actor, id, images, ctx) {
-      const written = [];
       let removed = [];
       try {
         const dto = await withTx(async (db) => {
@@ -258,19 +263,18 @@ export function createProductsService({ pool, withTx, repos, audit, storage }) {
             const buffer = Buffer.from(m[2], "base64");
             if (!buffer.length || buffer.length > MAX_IMAGE_BYTES) throw badRequest("INVALID_IMAGE", "Each image must be under 2 MB");
             const key = `${randomUUID()}.${MIME_EXT[m[1]]}`;
-            await storage.putObject(key, buffer);
-            written.push(key);
+            await products.putImageBlob(db, key, m[1], buffer); // inside the transaction: a rollback leaves nothing behind
             rows.push({ key, alt: row.name });
           }
           await products.replaceImages(db, id, rows);
           removed = current.filter((k) => !rows.some((r) => r.key === k));
+          await products.deleteImageBlobs(db, removed);
           await audit.log({ actor, action: "product.images_updated", entityType: "product", entityId: id, newValue: { count: rows.length } }, ctx, db);
           return load(db, row, actor);
         });
-        for (const k of removed) await storage.deleteObject(k).catch(() => {}); // best effort — an orphan file is harmless
+        for (const k of removed) await storage.deleteObject(k).catch(() => {}); // legacy disk copies, best effort
         return dto;
       } catch (err) {
-        for (const k of written) await storage.deleteObject(k).catch(() => {}); // transaction rolled back: don't leave the new files behind
         throw err;
       }
     },
@@ -278,7 +282,9 @@ export function createProductsService({ pool, withTx, repos, audit, storage }) {
     /** Bytes of one public product photo; 404 unless the key belongs to a product. */
     async imageFile(key) {
       if (!(await products.imageExists(pool, key))) throw notFound("IMAGE_NOT_FOUND", "Image not found");
-      let buffer;
+      const blob = await products.getImageBlob(pool, key);
+      if (blob) return blob;
+      let buffer; // photos saved before the database store existed
       try { buffer = await storage.getObject(key); } catch { throw notFound("IMAGE_NOT_FOUND", "Image not found"); }
       return { buffer, mime: EXT_MIME[key.split(".").pop()] || "application/octet-stream" };
     },

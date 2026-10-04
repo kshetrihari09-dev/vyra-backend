@@ -100,6 +100,52 @@ describe("product creation", () => {
   });
 });
 
+describe("seller sees their own non-public listings", () => {
+  it("list({ sellerId: own, status: any }) asks the repository for every status, scoped to that shop", async () => {
+    const e = setup();
+    await e.service.create(sellerActor, { ...base, sku: "SEL-LIST" }, ctx);
+    await e.service.list({ page: 1, pageSize: 100, sort: "relevance", sellerId: "acme", status: "any" }, sellerActor);
+    const f = e.db.products.lastSearch ?? e.repos?.products?.lastSearch;
+    assert.ok(f.statuses.includes("pending_review") && f.statuses.includes("rejected") && f.statuses.includes("inactive"));
+    assert.equal(f.sellerId, "acme");
+  });
+  it("another shop asking for acme's non-active products only gets the public view", async () => {
+    const e = setup();
+    await e.service.list({ page: 1, pageSize: 100, sort: "relevance", sellerId: "acme", status: "any" }, otherSellerActor);
+    const f = e.db.products.lastSearch ?? e.repos?.products?.lastSearch;
+    assert.deepEqual(f.statuses, ["active"]);
+  });
+});
+
+describe("staff creating on behalf of a shop", () => {
+  it("keeps the chosen sellerId so the product appears in that shop's console (it used to be dropped)", async () => {
+    const e = setup();
+    const p = await e.service.create(adminActor, { ...base, sku: "ADM-1", sellerId: "acme" }, ctx);
+    assert.equal(p.sellerId, "acme");
+  });
+  it("leaves it unowned (Vyra's own catalogue) when no shop is given", async () => {
+    const e = setup();
+    const p = await e.service.create(adminActor, { ...base, sku: "ADM-2" }, ctx);
+    assert.equal(p.sellerId, undefined);
+  });
+});
+
+describe("minimum stock level", () => {
+  it("is stored on create, returned on the DTO, kept when an edit omits it, and changed when an edit sends it", async () => {
+    const e = setup();
+    const a = await e.service.create(adminActor, { ...base, minStock: 25 }, ctx);
+    assert.equal(a.minStock, 25);
+    const kept = await e.service.update(adminActor, a.id, { ...base, version: a.version }, ctx);
+    assert.equal(kept.minStock, 25);
+    const changed = await e.service.update(adminActor, a.id, { ...base, minStock: 3, version: kept.version }, ctx);
+    assert.equal(changed.minStock, 3);
+  });
+  it("defaults to 10 when never set", async () => {
+    const e = setup();
+    assert.equal((await e.service.create(adminActor, base, ctx)).minStock, 10);
+  });
+});
+
 describe("product update / delete", () => {
   let e, p;
   beforeEach(async () => { e = setup(); p = await e.service.create(adminActor, base, ctx); e.audit.entries.length = 0; });

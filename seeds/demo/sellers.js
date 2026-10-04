@@ -9,7 +9,7 @@
  * Every other seed seller has no owner account yet (nobody logs in as them), so owner_user_id stays null.
  */
 const SELLERS = [
-  { id: "vyra-retail", name: "Vyra Retail", firstParty: true, status: "active", commissionRate: 0, rating: 4.8, reviews: 12400, joinedAt: "2024-01-01", payoutMethod: "N/A — first-party", contactEmail: "ops@vyra.com", ownerEmail: null },
+  { id: "vyra-retail", name: "Vyra Center", firstParty: true, status: "active", commissionRate: 0, rating: 4.8, reviews: 12400, joinedAt: "2024-01-01", payoutMethod: "N/A — first-party", contactEmail: "ops@vyra.com", ownerEmail: null },
   { id: "fresh-grocers", name: "Fresh Grocers Co.", status: "active", commissionRate: 8, rating: 4.6, reviews: 2140, joinedAt: "2025-09-12", payoutMethod: "Bank transfer •••• 4410", contactEmail: "partners@freshgrocers.example" },
   { id: "auralux-beauty", name: "AuraLux Beauty", status: "active", commissionRate: 15, rating: 4.7, reviews: 3810, joinedAt: "2025-11-03", payoutMethod: "Bank transfer •••• 2207", contactEmail: "hello@auralux.example" },
   { id: "novatech-official", name: "NovaTech Official Store", status: "active", commissionRate: 10, rating: 4.5, reviews: 5290, joinedAt: "2025-06-21", payoutMethod: "Bank transfer •••• 8834", contactEmail: "store@novatech.example", ownerEmail: "novatech@vyra.example" },

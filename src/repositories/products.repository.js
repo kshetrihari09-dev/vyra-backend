@@ -193,11 +193,11 @@ export function createProductsRepository() {
     async insert(db, p) {
       const { rows } = await db.query(
         `INSERT INTO products (id, name, slug, category_id, brand_id, seller_id, description, price, sale_price, tax_percent, sku, barcode, unit, moq, max_qty,
-                               status, delivery_available, prescription_required, tags, art, attributes, composition, usage_instructions, side_effects)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21::jsonb,$22,$23,$24) RETURNING *`,
+                               status, delivery_available, prescription_required, tags, art, attributes, composition, usage_instructions, side_effects, min_stock)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21::jsonb,$22,$23,$24,COALESCE($25::int, 10)) RETURNING *`,
         [p.id, p.name, p.slug, p.categoryId, p.brandId, p.sellerId ?? null, p.description ?? "", p.price, p.salePrice ?? null, p.tax ?? 0, p.sku, p.barcode || null,
          p.unit ?? "piece", p.moq ?? 1, p.maxQty ?? 10, p.status ?? "active", p.deliveryAvailable ?? true, !!p.flags?.prescriptionRequired, p.tags ?? [],
-         p.art == null ? null : JSON.stringify(p.art), JSON.stringify(p.attributes ?? {}), p.composition ?? null, p.usage ?? null, p.sideEffects ?? null],
+         p.art == null ? null : JSON.stringify(p.art), JSON.stringify(p.attributes ?? {}), p.composition ?? null, p.usage ?? null, p.sideEffects ?? null, p.minStock ?? null],
       );
       return rows[0];
     },
@@ -207,11 +207,11 @@ export function createProductsRepository() {
       const { rows } = await db.query(
         `UPDATE products SET name=$2, slug=$3, category_id=$4, brand_id=$5, seller_id=$6, description=$7, price=$8, sale_price=$9, tax_percent=$10, sku=$11,
                 barcode=$12, unit=$13, moq=$14, max_qty=$15, status=$16, delivery_available=$17, prescription_required=$18, tags=$19, art=$20::jsonb,
-                attributes=$21::jsonb, composition=$22, usage_instructions=$23, side_effects=$24, version = version + 1
+                attributes=$21::jsonb, composition=$22, usage_instructions=$23, side_effects=$24, min_stock = COALESCE($25::int, min_stock), version = version + 1
           WHERE id=$1 AND deleted_at IS NULL RETURNING *`,
         [id, p.name, p.slug, p.categoryId, p.brandId, p.sellerId ?? null, p.description ?? "", p.price, p.salePrice ?? null, p.tax ?? 0, p.sku, p.barcode || null,
          p.unit ?? "piece", p.moq ?? 1, p.maxQty ?? 10, p.status, p.deliveryAvailable ?? true, !!p.flags?.prescriptionRequired, p.tags ?? [],
-         p.art == null ? null : JSON.stringify(p.art), JSON.stringify(p.attributes ?? {}), p.composition ?? null, p.usage ?? null, p.sideEffects ?? null],
+         p.art == null ? null : JSON.stringify(p.art), JSON.stringify(p.attributes ?? {}), p.composition ?? null, p.usage ?? null, p.sideEffects ?? null, p.minStock ?? null],
       );
       return rows[0] || null;
     },
@@ -226,6 +226,17 @@ export function createProductsRepository() {
       for (let i = 0; i < rows.length; i++) {
         await db.query("INSERT INTO product_images (product_id, storage_key, alt_text, sort_order, is_primary) VALUES ($1, $2, $3, $4, $5)", [productId, rows[i].key, rows[i].alt ?? null, i, i === 0]);
       }
+    },
+    /** Photo bytes live in Postgres (not on the web server's disk, which is ephemeral on most hosts). */
+    async putImageBlob(db, key, mime, buffer) {
+      await db.query("INSERT INTO product_image_blobs (storage_key, mime, data) VALUES ($1, $2, $3) ON CONFLICT (storage_key) DO UPDATE SET mime = EXCLUDED.mime, data = EXCLUDED.data", [key, mime, buffer]);
+    },
+    async getImageBlob(db, key) {
+      const { rows } = await db.query("SELECT mime, data FROM product_image_blobs WHERE storage_key = $1", [key]);
+      return rows[0] ? { mime: rows[0].mime, buffer: rows[0].data } : null;
+    },
+    async deleteImageBlobs(db, keys) {
+      if (keys.length) await db.query("DELETE FROM product_image_blobs WHERE storage_key = ANY($1::text[])", [keys]);
     },
     async imageExists(db, key) {
       return (await db.query("SELECT 1 FROM product_images WHERE storage_key = $1 LIMIT 1", [key])).rows.length > 0;
@@ -263,6 +274,11 @@ export function createProductsRepository() {
     async variantStock(db, productId, variantId) {
       const { rows } = await db.query("SELECT COALESCE(sum(on_hand), 0)::int AS n FROM inventory WHERE product_id = $1 AND variant_id = $2", [productId, variantId]);
       return rows[0].n;
+    },
+
+    /** Keeps the per-branch reorder level (admin low-stock report) in step with the product's minimum stock level. */
+    async syncReorderLevel(db, productId, level) {
+      await db.query("UPDATE inventory SET reorder_level = $2 WHERE product_id = $1", [productId, level]);
     },
 
     /** Opening stock recorded at product creation (later stock changes go through the Phase 4 inventory API). */

@@ -28,9 +28,9 @@ export function toProductDto(r, hydrated = {}) {
   const dto = {
     id: r.id, name: r.name, slug: r.slug, categoryId: r.category_id, brandId: r.brand_id,
     description: r.description, price: toNumber(r.price), salePrice: toNumber(r.sale_price), tax: toNumber(r.tax_percent),
-    sku: r.sku, barcode: r.barcode ?? "", unit: r.unit, moq: r.moq, maxQty: r.max_qty,
+    sku: r.sku, barcode: r.barcode ?? "", unit: r.unit, moq: r.moq, maxQty: r.max_qty, minStock: r.min_stock ?? 10,
     rating: toNumber(r.rating), reviews: r.review_count, sold: r.sold_count,
-    createdAt: isoDate(r.created_at), status: r.status, deliveryAvailable: r.delivery_available,
+    createdAt: isoDate(r.created_at), updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null, status: r.status, deliveryAvailable: r.delivery_available,
     tags: r.tags ?? [], art: r.art ?? null, attributes: r.attributes ?? {},
     version: r.version,
   };

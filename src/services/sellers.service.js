@@ -39,7 +39,7 @@ export function createSellersService({ pool, withTx, repos, encryption, audit })
       return withTx(async (db) => {
         const before = await repo.getById(db, id, { forUpdate: true });
         if (!before) throw notFound("SELLER_NOT_FOUND", "Seller not found");
-        if (before.first_party) throw badRequest("FIRST_PARTY_LOCKED", "The first-party (Vyra Retail) seller can't be suspended");
+        if (before.first_party) throw badRequest("FIRST_PARTY_LOCKED", "The first-party (Vyra Center) seller can't be suspended");
         const updated = await repo.updateStatus(db, id, status);
         await audit.log({ actor, action: "seller.status_changed", entityType: "seller", entityId: id, oldValue: { status: before.status }, newValue: { status } }, ctx, db);
         return toSellerDto(updated);
