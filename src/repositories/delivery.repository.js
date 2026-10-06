@@ -10,7 +10,7 @@ export function createDeliveryRepository() {
       FROM riders r JOIN users u ON u.id = r.user_id`;
   const DELIVERY_VIEW = `
     SELECT d.*, o.number AS order_number, o.status AS order_status, o.branch_id, o.total AS order_total, o.payment_method,
-           o.payment_status, o.otp_required, o.eta, o.address AS order_address, u.full_name AS rider_name,
+           o.payment_status, o.otp_required, o.eta, o.address AS order_address, u.full_name AS rider_name, r.phone AS rider_phone, r.vehicle AS rider_vehicle, r.photo_url AS rider_photo,
            (SELECT count(*) FROM order_items oi WHERE oi.order_id = o.id) AS item_count
       FROM deliveries d
       JOIN orders o ON o.id = d.order_id
@@ -37,7 +37,7 @@ export function createDeliveryRepository() {
       return this.getRider(db, rows[0].id);
     },
     async updateRider(db, id, patch) {
-      const map = { phone: "phone", vehicle: "vehicle", status: "status", isAvailable: "is_available" };
+      const map = { phone: "phone", vehicle: "vehicle", status: "status", isAvailable: "is_available", photoUrl: "photo_url" };
       const sets = []; const values = [id];
       for (const [k, col] of Object.entries(map)) if (patch[k] !== undefined) { values.push(patch[k]); sets.push(`${col} = $${values.length}`); }
       if (sets.length) await db.query(`UPDATE riders SET ${sets.join(", ")} WHERE id = $1`, values);
@@ -61,10 +61,11 @@ export function createDeliveryRepository() {
     },
 
     // ------------------------------------------------------------ deliveries
-    async insertDelivery(db, { orderId, riderId, status, assignedBy = null, selfClaimed = false, acceptedAt = null }) {
+    async insertDelivery(db, { orderId, riderId, status, assignedBy = null, selfClaimed = false, acceptedAt = null, pickup = null, customer = null, estimatedArrival = null, etaSource = null }) {
       const { rows } = await db.query(
-        "INSERT INTO deliveries (order_id, rider_id, status, assigned_by, self_claimed, accepted_at) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id",
-        [orderId, riderId, status, assignedBy, selfClaimed, acceptedAt]);
+        `INSERT INTO deliveries (order_id, rider_id, status, assigned_by, self_claimed, accepted_at, pickup_lat, pickup_lng, customer_lat, customer_lng, estimated_arrival, eta_updated_at, eta_source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, CASE WHEN $11::timestamptz IS NULL THEN NULL ELSE now() END, $12) RETURNING id`,
+        [orderId, riderId, status, assignedBy, selfClaimed, acceptedAt, pickup?.lat ?? null, pickup?.lng ?? null, customer?.lat ?? null, customer?.lng ?? null, estimatedArrival, etaSource]);
       return this.getDelivery(db, rows[0].id);
     },
     async getDelivery(db, id, { forUpdate = false } = {}) {
@@ -87,7 +88,8 @@ export function createDeliveryRepository() {
     async updateDelivery(db, id, patch) {
       const map = { status: "status", acceptedAt: "accepted_at", pickedUpAt: "picked_up_at", deliveredAt: "delivered_at", closedAt: "closed_at",
         failureReason: "failure_reason", failureNote: "failure_note", cancelReason: "cancel_reason", cashCollected: "cash_collected",
-        lastLat: "last_lat", lastLng: "last_lng", lastAccuracy: "last_accuracy", lastLocatedAt: "last_located_at" };
+        lastLat: "last_lat", lastLng: "last_lng", lastAccuracy: "last_accuracy", lastLocatedAt: "last_located_at",
+        arrivedPickupAt: "arrived_pickup_at", startedAt: "started_at", estimatedArrival: "estimated_arrival", etaUpdatedAt: "eta_updated_at", etaSource: "eta_source" };
       const sets = []; const values = [id];
       for (const [k, col] of Object.entries(map)) if (patch[k] !== undefined) { values.push(patch[k]); sets.push(`${col} = $${values.length}`); }
       if (sets.length) await db.query(`UPDATE deliveries SET ${sets.join(", ")} WHERE id = $1`, values);
@@ -123,7 +125,21 @@ export function createDeliveryRepository() {
     /** Called when a run ends: the trail and the "last seen" position are deleted, not archived. */
     async purgeLocations(db, deliveryId) {
       await db.query("DELETE FROM delivery_locations WHERE delivery_id = $1", [deliveryId]);
-      await db.query("UPDATE deliveries SET last_lat = NULL, last_lng = NULL, last_accuracy = NULL, last_located_at = NULL WHERE id = $1", [deliveryId]);
+      await db.query("UPDATE deliveries SET last_lat = NULL, last_lng = NULL, last_accuracy = NULL, last_located_at = NULL, customer_lat = NULL, customer_lng = NULL WHERE id = $1", [deliveryId]);
+    },
+
+    // ------------------------------------------------------------ dispatch helpers
+    /** Riders who are on duty and could take work — the people a shop's "request delivery" nudges. */
+    async availableRiderUserIds(db) {
+      const { rows } = await db.query(`${RIDER_SELECT} WHERE r.is_available AND r.status = 'active' AND u.status = 'active'`);
+      return rows.filter((r) => Number(r.active_count) < 5).map((r) => r.user_id);
+    },
+    async lastEventAt(db, orderId, type) {
+      return (await db.query("SELECT max(at) AS at FROM delivery_events WHERE order_id = $1 AND type = $2", [orderId, type])).rows[0]?.at ?? null;
+    },
+    async setBranchLocation(db, branchId, { lat, lng }) {
+      const { rows } = await db.query("UPDATE branches SET lat = $2, lng = $3 WHERE id = $1 RETURNING id, name, lat, lng", [branchId, lat, lng]);
+      return rows[0] || null;
     },
 
     // ------------------------------------------------------------------ events

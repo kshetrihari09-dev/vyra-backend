@@ -12,17 +12,18 @@ export function createAddressesRepository() {
     },
     async insert(db, userId, a) {
       const { rows } = await db.query(
-        `INSERT INTO addresses (user_id, label, name, phone, line1, line2, city, zip, province_id, district_id, municipality_id, ward, instructions, is_default)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-        [userId, a.label, a.name, a.phone, a.line1, a.line2 ?? null, a.city ?? null, a.zip ?? null, a.provinceId ?? null, a.districtId ?? null, a.municipalityId ?? null, a.ward ?? null, a.instructions ?? null, !!a.isDefault],
+        `INSERT INTO addresses (user_id, label, name, phone, line1, line2, city, zip, province_id, district_id, municipality_id, ward, instructions, is_default, lat, lng)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+        [userId, a.label, a.name, a.phone, a.line1, a.line2 ?? null, a.city ?? null, a.zip ?? null, a.provinceId ?? null, a.districtId ?? null, a.municipalityId ?? null, a.ward ?? null, a.instructions ?? null, !!a.isDefault, a.lat ?? null, a.lng ?? null],
       );
       return rows[0];
     },
     async update(db, userId, id, a) {
       const { rows } = await db.query(
-        `UPDATE addresses SET label=$3, name=$4, phone=$5, line1=$6, line2=$7, city=$8, zip=$9, province_id=$10, district_id=$11, municipality_id=$12, ward=$13, instructions=$14, is_default=$15
+        `UPDATE addresses SET label=$3, name=$4, phone=$5, line1=$6, line2=$7, city=$8, zip=$9, province_id=$10, district_id=$11, municipality_id=$12, ward=$13, instructions=$14, is_default=$15,
+                lat = CASE WHEN $16::boolean THEN $17::float8 ELSE lat END, lng = CASE WHEN $16::boolean THEN $18::float8 ELSE lng END
           WHERE id=$1 AND user_id=$2 RETURNING *`,
-        [id, userId, a.label, a.name, a.phone, a.line1, a.line2 ?? null, a.city ?? null, a.zip ?? null, a.provinceId ?? null, a.districtId ?? null, a.municipalityId ?? null, a.ward ?? null, a.instructions ?? null, !!a.isDefault],
+        [id, userId, a.label, a.name, a.phone, a.line1, a.line2 ?? null, a.city ?? null, a.zip ?? null, a.provinceId ?? null, a.districtId ?? null, a.municipalityId ?? null, a.ward ?? null, a.instructions ?? null, !!a.isDefault, a.lat !== undefined, a.lat ?? null, a.lng ?? null],
       );
       return rows[0] || null;
     },

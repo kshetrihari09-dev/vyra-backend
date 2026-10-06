@@ -45,6 +45,8 @@ import { createRiderApplicationsService } from "./services/riderApplications.ser
 import { createRiderProvisioning } from "./services/riderProvisioning.js";
 import { createRiderApplicationsRepository } from "./repositories/riderApplications.repository.js";
 import { createDeliveryService } from "./services/delivery.service.js";
+import { createRealtime } from "./services/realtime.service.js";
+import { createRoutingService } from "./services/routing.service.js";
 import { createRiderAccess } from "./services/riderAccess.service.js";
 import { createSellerPayoutsService } from "./services/sellerPayouts.service.js";
 import { createCodProvider } from "./services/payments/cod.provider.js";
@@ -118,11 +120,14 @@ export function createContainer(config, overrides = {}) {
   services.prescriptions = createPrescriptionsService({ pool, withTx, repos, storage, audit, notifications });
   // The handover code is derived from a subkey of DATA_ENCRYPTION_KEY, never stored (utils/deliveryCode.js).
   const deliveryCodes = createDeliveryCodes(config.security.dataEncryptionKey);
-  services.orders = createOrdersService({ pool, withTx, repos, pricing, audit, prescriptions: services.prescriptions, payments: services.payments, codes: deliveryCodes, notifications });
+  // Realtime tracking (SSE over LISTEN/NOTIFY). Its listener connects lazily on the first stream, so tests/scripts that build a container open nothing.
+  services.realtime = createRealtime({ config, logger });
+  const routing = createRoutingService({ accessToken: config.maps.accessToken, logger });
+  services.orders = createOrdersService({ pool, withTx, repos, pricing, audit, prescriptions: services.prescriptions, payments: services.payments, codes: deliveryCodes, notifications, realtime: services.realtime });
   // The single rider-authorisation service: used by the /rider/* middleware AND by every delivery service call.
   services.riderAccess = createRiderAccess({ repos });
   const provisionRider = createRiderProvisioning({ repos, audit }); // one way to make a rider: admin-add and application-approval both use it
-  services.delivery = createDeliveryService({ pool, withTx, repos, audit, payments: services.payments, codes: deliveryCodes, notifications, riderAccess: services.riderAccess, provisionRider });
+  services.delivery = createDeliveryService({ pool, withTx, repos, audit, payments: services.payments, codes: deliveryCodes, notifications, riderAccess: services.riderAccess, provisionRider, realtime: services.realtime, routing });
 
   const encryption = createEncryption(config.security.dataEncryptionKey);
   services.sellers = createSellersService({ pool, withTx, repos, encryption, audit });

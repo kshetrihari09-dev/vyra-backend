@@ -2,6 +2,8 @@ import { DELIVERY_RULES } from "../config/delivery.js";
 import { evaluateRiderRow, riderState, RIDER_STATE } from "../domain/riderEligibility.js";
 import { toNumber } from "../utils/text.js";
 
+const pt = (lat, lng) => (lat == null || lng == null ? null : { lat: Number(lat), lng: Number(lng) });
+
 /** `vehicle` is one text column, written as "Type · Plate" ("Bike · BA 12 PA 1234"). The UI wants the halves. */
 export function splitVehicle(vehicle) {
   const [type, ...rest] = String(vehicle ?? "").split(" · ");
@@ -20,7 +22,7 @@ export function toRiderDto(r) {
   const state = riderState(r, { capacity });
   return {
     id: r.id, userId: r.user_id, name: r.full_name ?? null, phone: r.phone, vehicle: r.vehicle, ...splitVehicle(r.vehicle),
-    status: r.status, isAvailable: r.is_available,
+    status: r.status, isAvailable: r.is_available, photoUrl: r.photo_url ?? null,
     activeCount: Number(r.active_count ?? 0), capacity,
     authorized: evaluateRiderRow(r).ok, state, canTakeDelivery: state === RIDER_STATE.AVAILABLE,
   };
@@ -36,7 +38,12 @@ export function toDeliveryDto(r, { events } = {}) {
   return {
     id: r.id, orderId: r.order_id, status: r.status, riderId: r.rider_id, riderName: r.rider_name ?? undefined,
     selfClaimed: r.self_claimed, assignedAt: r.created_at, acceptedAt: r.accepted_at, pickedUpAt: r.picked_up_at,
-    deliveredAt: r.delivered_at, failureReason: r.failure_reason ?? null, failureNote: r.failure_note ?? null,
+    deliveredAt: r.delivered_at, arrivedPickupAt: r.arrived_pickup_at ?? null, startedAt: r.started_at ?? null,
+    estimatedArrival: r.estimated_arrival ?? null, etaSource: r.eta_source ?? null,
+    /** Store location (not personal data). The customer's pin is handed over only while the run is open, like the street address. */
+    pickup: pt(r.pickup_lat, r.pickup_lng),
+    destination: OPEN_DELIVERY.includes(r.status) ? pt(r.customer_lat, r.customer_lng) : null,
+    failureReason: r.failure_reason ?? null, failureNote: r.failure_note ?? null,
     cashCollected: r.cash_collected == null ? null : toNumber(r.cash_collected),
     order: {
       number: r.order_number, status: r.order_status, storeId: r.branch_id, total: toNumber(r.order_total),

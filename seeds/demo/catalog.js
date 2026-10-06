@@ -64,6 +64,13 @@ export async function seedDemoCatalog(db, { log = console.log } = {}) {
     );
   }
 
+  // Pickup points for live tracking. DEMO coordinates (central Kathmandu, matching the Nepal address data); real branches are set by
+  // dispatch via PUT /api/delivery/branches/:id/location. Only fills a branch that has none, so re-seeding never overwrites a real value.
+  const DEMO_BRANCH_COORDS = { "store-01": [27.7172, 85.324], "store-02": [27.6939, 85.3206] };
+  for (const [id, [lat, lng]] of Object.entries(DEMO_BRANCH_COORDS)) {
+    await db.query("UPDATE branches SET lat = $2, lng = $3 WHERE id = $1 AND lat IS NULL AND is_demo", [id, lat, lng]);
+  }
+
   const report = [];
   for (const p of snap.products) {
     const ins = await db.query(

@@ -25,6 +25,9 @@ export const failBody = z.object({ reason: z.enum(FAILURE_REASON_IDS), note: tex
 export const assignBody = z.object({ riderId: z.string().uuid() });
 export const unassignBody = z.object({ reason: text(200).optional() });
 export const createRiderBody = z.object({ userId: z.string().uuid(), phone, vehicle: text(60).min(1, "Enter a vehicle") });
+export const branchIdParams = z.object({ branchId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/) });
+export const branchLocationBody = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) });
 export const updateRiderBody = z.object({
   phone: phone.optional(), vehicle: text(60).min(1).optional(), status: z.enum(["active", "suspended"]).optional(),
+  photoUrl: z.string().trim().url().max(500).refine((u) => u.startsWith("https://"), "Photo must be an https:// link").nullable().optional(),
 }).refine((b) => Object.keys(b).length > 0, "Nothing to update");

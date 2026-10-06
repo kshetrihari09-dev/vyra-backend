@@ -433,12 +433,16 @@ describe("location sharing and tracking", () => {
     o = await packedOrder(e);
     const d = await e.delivery.assign(dispatcher, o.id, { riderId: r1.id }, ctx);
     await e.delivery.accept(riderActor("u-r1"), d.id, ctx);
-    id = d.id; e.r2 = r2;
+    id = d.id; e.r2 = r2; e.r1id = r1.id;
   });
 
-  it("locations are refused until the rider is out for delivery (no tracking while merely assigned)", async () => {
-    await assert.rejects(e.delivery.updateLocation(riderActor("u-r1"), id, { lat: 27.7, lng: 85.3 }), { code: "NOT_TRACKING" });
-    assert.equal((await e.delivery.tracking(customer, o.id)).delivery.location, null);
+  it("locations are refused until the rider ACCEPTS (assigned only), and accepted from then on", async () => {
+    const o2 = await packedOrder(e);
+    const d2 = await e.delivery.assign(dispatcher, o2.id, { riderId: e.r1id }, ctx);                       // offered, not yet accepted
+    await assert.rejects(e.delivery.updateLocation(riderActor("u-r1"), d2.id, { lat: 27.7, lng: 85.3 }), { code: "NOT_TRACKING" });
+    assert.equal((await e.delivery.tracking(customer, o2.id)).delivery.location, null);
+    await e.delivery.accept(riderActor("u-r1"), d2.id, ctx);
+    assert.deepEqual(await e.delivery.updateLocation(riderActor("u-r1"), d2.id, { lat: 27.7, lng: 85.3 }), { accepted: true });
   });
 
   it("pings faster than the interval are dropped; later ones are stored", async () => {

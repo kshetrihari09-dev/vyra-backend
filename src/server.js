@@ -18,6 +18,8 @@ if (config.jobs.enabled) scheduler.start();
 
 async function shutdown(signal) {
   logger.info("shutting down", { signal });
+  // Open tracking streams would keep server.close() waiting forever, so end them first.
+  await container.services.realtime.stop().catch(() => {});
   server.close(async () => {
     await scheduler.stop().catch(() => {});
     await pool.end().catch(() => {});

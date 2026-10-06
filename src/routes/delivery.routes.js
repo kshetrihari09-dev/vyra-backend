@@ -8,7 +8,7 @@ import * as v from "../validators/delivery.validators.js";
  * /rider/*    — the rider app. `requireRiderAccess` runs the central rider check (active user + `delivery` role + `delivery:rider`
  *               permission + an active profile that belongs to this user); a rider only ever touches their own deliveries)
  * /delivery/* — dispatch (delivery:manage)
- * /orders/:id/tracking — the order's owner, or staff (checked in the service)
+ * /orders/:id/tracking[/stream] — the order's owner, dispatch, the order's own shop, or read-only staff (checked in the service; each gets a different view)
  */
 export function deliveryRoutes({ container, controller }) {
   const r = Router();
@@ -23,7 +23,9 @@ export function deliveryRoutes({ container, controller }) {
   r.post("/rider/orders/:orderId/claim", authed, rider, validate({ params: v.orderIdParams }), controller.claim);
   r.post("/rider/deliveries/:id/accept", authed, rider, validate({ params: v.idParams }), controller.accept);
   r.post("/rider/deliveries/:id/decline", authed, rider, validate({ params: v.idParams, body: v.declineBody }), controller.decline);
+  r.post("/rider/deliveries/:id/arrived", authed, rider, validate({ params: v.idParams }), controller.arrived);
   r.post("/rider/deliveries/:id/pickup", authed, rider, validate({ params: v.idParams }), controller.pickup);
+  r.post("/rider/deliveries/:id/start", authed, rider, validate({ params: v.idParams }), controller.start);
   r.post("/rider/deliveries/:id/location", authed, rider, validate({ params: v.idParams, body: v.locationBody }), controller.location);
   r.post("/rider/deliveries/:id/deliver", authed, rider, validate({ params: v.idParams, body: v.deliverBody }), controller.deliver);
   r.post("/rider/deliveries/:id/fail", authed, rider, validate({ params: v.idParams, body: v.failBody }), controller.fail);
@@ -37,6 +39,12 @@ export function deliveryRoutes({ container, controller }) {
   r.post("/delivery/deliveries/:id/reassign", authed, dispatch, validate({ params: v.idParams, body: v.assignBody }), controller.reassign);
   r.post("/delivery/deliveries/:id/unassign", authed, dispatch, validate({ params: v.idParams, body: v.unassignBody }), controller.unassign);
 
+  r.put("/delivery/branches/:branchId/location", authed, dispatch, validate({ params: v.branchIdParams, body: v.branchLocationBody }), controller.setBranchLocation);
+
+  // The order's shop (sole seller) or dispatch asks riders to collect a packed order. Authorised in the service, which answers "not found" to anyone else.
+  r.post("/orders/:orderId/request-delivery", authed, validate({ params: v.orderIdParams }), controller.requestDelivery);
+
   r.get("/orders/:id/tracking", authed, validate({ params: v.idParams }), controller.tracking);
+  r.get("/orders/:id/tracking/stream", authed, validate({ params: v.idParams }), controller.trackingStream);
   return r;
 }

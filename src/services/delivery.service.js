@@ -2,6 +2,9 @@ import { DELIVERY_RULES, FAILURE_REASONS } from "../config/delivery.js";
 import { toClaimableDto, toDeliveryDto, toEventDto, toRiderDto } from "../models/delivery.model.js";
 import { assertPaymentCleared, assertTransition } from "../domain/orderRules.js";
 import { AppError, badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
+import { canShareLocation, isFinalOrder, stageOf, stepsFor } from "../domain/tracking.js";
+import { noRealtime } from "./realtime.service.js";
+import { createRoutingService, estimateLocal } from "./routing.service.js";
 import { createRiderAccess } from "./riderAccess.service.js";
 import { createRiderProvisioning } from "./riderProvisioning.js";
 
@@ -9,7 +12,9 @@ const can = (actor, perm) => !!actor?.permissions?.includes(perm);
 const cents = (n) => Math.round(Number(n) * 100);
 const partnerOf = (rider) => ({ name: rider.full_name, phone: rider.phone, vehicle: rider.vehicle });
 /** Event types a customer may see on their own order's timeline (never notes, never OTP/staff housekeeping). */
-const CUSTOMER_EVENTS = ["assigned", "claimed", "picked_up", "delivered", "failed"];
+const CUSTOMER_EVENTS = ["assigned", "claimed", "arrived_pickup", "picked_up", "started", "delivered", "failed"];
+const point = (lat, lng) => (lat == null || lng == null ? null : { lat: Number(lat), lng: Number(lng) });
+const minutesUntil = (at, now) => (at ? Math.max(0, Math.ceil((new Date(at) - now) / 60_000)) : null);
 const BEFORE_PICKUP = ["assigned", "accepted"];
 
 /**
@@ -50,8 +55,10 @@ function friendlyDbError(err) {
  *
  * Rider authorisation is NOT decided here: it is `riderAccess` (domain/riderEligibility.js), called on every path.
  */
-export function createDeliveryService({ pool, withTx, repos, audit, payments, codes, notifications = { emit: async () => null }, clock = () => new Date(), riderAccess = createRiderAccess({ repos }), provisionRider = createRiderProvisioning({ repos, audit }) }) {
+export function createDeliveryService({ pool, withTx, repos, audit, payments, codes, notifications = { emit: async () => null }, clock = () => new Date(), riderAccess = createRiderAccess({ repos }), provisionRider = createRiderProvisioning({ repos, audit }), realtime = noRealtime, routing = createRoutingService() }) {
   const { delivery: repo, orders, roles, users } = repos;
+  /** Tell every screen watching this order that something changed. Runs INSIDE the caller's transaction: delivered on commit only. */
+  const ping = (db, orderId) => realtime.publish(db, orderId);
 
   /** `withTx` with PostgreSQL concurrency errors mapped to safe, specific conflicts. */
   const tx = async (fn) => {
@@ -103,10 +110,16 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
     if (await repo.countActiveForRider(db, rider.id) >= DELIVERY_RULES.maxActivePerRider) {
       throw conflict("RIDER_BUSY", `${selfClaimed ? "You have" : "Rider has"} reached the delivery limit (${DELIVERY_RULES.maxActivePerRider} active deliveries).`);
     }
+    // Both end points are copied onto the run now: a customer editing their address mid-delivery must not move the destination.
+    const branch = await repos.catalog.getBranch(db, order.branch_id);
+    const pickup = point(branch?.lat, branch?.lng);
+    const customer = point(order.address?.lat, order.address?.lng);
+    const first = pickup && customer ? estimateLocal([pickup, customer]) : null;
     try {
       return await repo.insertDelivery(db, {
         orderId: order.id, riderId: rider.id, status: selfClaimed ? "accepted" : "assigned",
         assignedBy: selfClaimed ? null : actor.id, selfClaimed, acceptedAt: selfClaimed ? clock() : null,
+        pickup, customer, estimatedArrival: first ? new Date(clock().getTime() + first.minutes * 60_000) : null, etaSource: first ? first.source : null,
       });
     } catch (err) {
       if (err.code === "23505") throw conflict("ALREADY_ASSIGNED", "Order is already assigned to another rider."); // the partial unique index is the backstop
@@ -117,7 +130,46 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
   /** Tell the customer (and, for dispatch assignments, the rider) — inside the same transaction as the change. */
   const tell = (db, order, type, data = {}) => notifications.emit(db, { userId: order.user_id, type, data: { orderId: order.id, number: order.number, ...data } });
 
+  /** The delivery's first estimate also becomes orders.eta (what the rest of the app already shows): one number, two readers. */
+  const etaPatch = (d) => (d?.estimated_arrival ? { eta: d.estimated_arrival } : {});
   const dto = async (db, id, opts) => toDeliveryDto(await repo.getDelivery(db, id), opts);
+
+  /**
+   * Recalculate the ETA from the rider's latest position: before pickup it is (here → store → customer), after pickup
+   * (here → customer). Runs outside any transaction; a failure is logged and swallowed — tracking must never break a delivery.
+   */
+  async function refreshEta({ id, orderId, status, from, pickup, customer }) {
+    try {
+      if (!customer) return;
+      const path = status === "accepted" && pickup ? [from, pickup, customer] : [from, customer];
+      const eta = await routing.eta(path);
+      if (!eta) return;
+      const at = new Date(clock().getTime() + eta.minutes * 60_000);
+      await tx(async (db) => {
+        const order = await lockOrder(db, orderId);                                  // 1. order
+        const d = await repo.getDelivery(db, id, { forUpdate: true });               // 3. delivery
+        if (!d || !canShareLocation(d.status)) return;                               // the run ended while we were asking
+        await repo.updateDelivery(db, id, { estimatedArrival: at, etaSource: eta.source, etaUpdatedAt: clock() });
+        await orders.updateStatus(db, order.id, order.status, { eta: at });
+        await ping(db, orderId);
+      });
+    } catch (err) {
+      // a lost race (DELIVERY_BUSY) or a routing hiccup — the next ping tries again
+    }
+  }
+
+  /** Who is looking at an order's tracking, decided from the database — never from anything the client sent. */
+  async function viewerOf(db, actor, order) {
+    const owner = !!order && order.user_id === actor?.id;
+    const dispatcher = can(actor, "delivery:manage");
+    let seller = false;
+    if (order && !owner && !dispatcher && can(actor, "seller:manage_own")) {
+      const shop = await repos.sellers.getByOwner(db, actor.id);
+      seller = !!shop && shop.status === "active" && (await orders.items(db, order.id)).some((i) => i.seller_id === shop.id);
+    }
+    const staff = !owner && !dispatcher && !seller && can(actor, "orders:read_all");
+    return { owner, dispatcher, seller, staff, any: owner || dispatcher || seller || staff };
+  }
 
   return {
     // =============================================================== rider: profile & queue
@@ -158,10 +210,11 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         assertPaymentCleared(order);
         if (await repo.activeForOrder(db, orderId)) throw conflict("ALREADY_ASSIGNED", "Order is already assigned to another rider.");
         const d = await openAssignment(db, { actor, order, rider, selfClaimed: true }); // 3. delivery (new row)
-        await moveOrder(db, order, "assigned", { patch: { partner: partnerOf(rider) } });
+        await moveOrder(db, order, "assigned", { patch: { partner: partnerOf(rider), ...etaPatch(d) } });
         await repo.addEvent(db, { deliveryId: d.id, orderId, type: "claimed", actorId: actor.id });
         await tell(db, order, "delivery.assigned", { riderName: rider.full_name });
         await audit.log({ actor, action: "delivery.claimed", entityType: "delivery", entityId: d.id, newValue: { orderId, riderId: rider.id } }, ctx, db);
+        await ping(db, orderId);
         return dto(db, d.id);
       });
     },
@@ -172,6 +225,7 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         if (d.status !== "assigned") throw conflict("NOT_OFFERED", `This delivery is "${d.status}" — there's nothing to accept.`);
         await repo.updateDelivery(db, d.id, { status: "accepted", acceptedAt: clock() });
         await repo.addEvent(db, { deliveryId: d.id, orderId: d.order_id, type: "accepted", actorId: actor.id });
+        await ping(db, d.order_id);
         return dto(db, d.id);
       });
     },
@@ -185,6 +239,7 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         await moveOrder(db, order, "packed", { note: "Rider declined — back to dispatch", patch: { partner: null } });
         await repo.addEvent(db, { deliveryId: d.id, orderId: order.id, type: "declined", actorId: actor.id, note: body?.reason ?? null });
         await audit.log({ actor, action: "delivery.declined", entityType: "delivery", entityId: d.id, newValue: { orderId: order.id, reason: body?.reason ?? null } }, ctx, db);
+        await ping(db, order.id);
         return dto(db, d.id);
       });
     },
@@ -200,22 +255,59 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         await repo.addEvent(db, { deliveryId: d.id, orderId: order.id, type: "picked_up", actorId: actor.id });
         await tell(db, order, "delivery.out_for_delivery"); // never carries the handover code — see notifications/templates.js
         await audit.log({ actor, action: "delivery.picked_up", entityType: "delivery", entityId: d.id, newValue: { orderId: order.id } }, ctx, db);
+        await ping(db, order.id);
         return dto(db, d.id);
       });
     },
 
-    /** Only while out for delivery, and pings faster than the interval are dropped rather than stored. */
-    async updateLocation(actor, id, point) {
+    /** Rider reports they are at the store. Idempotent; the status stays "accepted" (it only adds a timestamp + an event). */
+    async arrived(actor, id) {
       return tx(async (db) => {
+        const { d } = await lockOwnDelivery(db, actor, id);                           // delivery only
+        if (d.status !== "accepted") throw conflict("NOT_ACCEPTED", d.status === "assigned" ? "Accept the delivery first." : `This delivery is "${d.status}".`);
+        if (!d.arrived_pickup_at) {
+          await repo.updateDelivery(db, d.id, { arrivedPickupAt: clock() });
+          await repo.addEvent(db, { deliveryId: d.id, orderId: d.order_id, type: "arrived_pickup", actorId: actor.id });
+          await ping(db, d.order_id);
+        }
+        return dto(db, d.id);
+      });
+    },
+
+    /** After pickup, "Start delivery" = the rider is now heading to the customer. Idempotent; status stays "picked_up". */
+    async start(actor, id) {
+      return tx(async (db) => {
+        const { d } = await lockOwnDelivery(db, actor, id);                           // delivery only
+        if (d.status !== "picked_up") throw conflict("NOT_PICKED_UP", d.status === "accepted" ? "Pick the order up before starting the delivery." : `This delivery is "${d.status}".`);
+        if (!d.started_at) {
+          await repo.updateDelivery(db, d.id, { startedAt: clock() });
+          await repo.addEvent(db, { deliveryId: d.id, orderId: d.order_id, type: "started", actorId: actor.id });
+          await ping(db, d.order_id);
+        }
+        return dto(db, d.id);
+      });
+    },
+
+    /**
+     * Only while the rider has an ACTIVE delivery (accepted or picked up) — never before they accept, never after it ends.
+     * Pings faster than the interval are dropped rather than stored. The ETA is refreshed at most every `etaRefreshMs`,
+     * AFTER the transaction commits: it may call a routing API, and that must never hold a delivery lock.
+     */
+    async updateLocation(actor, id, pt) {
+      const res = await tx(async (db) => {
         // Delivery lock only: it serialises with deliver/fail (which hold order → delivery) so a late ping can't outlive the purge.
         const { d } = await lockOwnDelivery(db, actor, id);
-        if (d.status !== "picked_up") throw conflict("NOT_TRACKING", "Location is only shared while you're out for delivery.");
+        if (!canShareLocation(d.status)) throw conflict("NOT_TRACKING", "Location is only shared while you have an active delivery.");
         const now = clock();
         if (d.last_located_at && now - new Date(d.last_located_at) < DELIVERY_RULES.locationMinIntervalMs) return { accepted: false };
-        await repo.addLocation(db, d.id, point);
-        await repo.updateDelivery(db, d.id, { lastLat: point.lat, lastLng: point.lng, lastAccuracy: point.accuracy ?? null, lastLocatedAt: now });
-        return { accepted: true };
+        await repo.addLocation(db, d.id, pt);
+        const refresh = !d.eta_updated_at || now - new Date(d.eta_updated_at) >= DELIVERY_RULES.etaRefreshMs;
+        await repo.updateDelivery(db, d.id, { lastLat: pt.lat, lastLng: pt.lng, lastAccuracy: pt.accuracy ?? null, lastLocatedAt: now, ...(refresh ? { etaUpdatedAt: now } : {}) });
+        await ping(db, d.order_id);
+        return { accepted: true, refresh: refresh ? { id: d.id, orderId: d.order_id, status: d.status, from: pt, pickup: point(d.pickup_lat, d.pickup_lng), customer: point(d.customer_lat, d.customer_lng) } : null };
       });
+      if (res.refresh) await refreshEta(res.refresh);
+      return { accepted: res.accepted };
     },
 
     /**
@@ -260,6 +352,7 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         await repo.addEvent(db, { deliveryId: d.id, orderId: order.id, type: "delivered", actorId: actor.id });
         await tell(db, order, "delivery.delivered");
         await audit.log({ actor, action: "delivery.completed", entityType: "delivery", entityId: d.id, newValue: { orderId: order.id, cash: cod ? Number(order.total) : 0 } }, ctx, db);
+        await ping(db, order.id);
         return { value: await dto(db, d.id) };
       });
       if (outcome.error) throw outcome.error;
@@ -293,6 +386,7 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         await repo.addEvent(db, { deliveryId: d.id, orderId: order.id, type: "failed", actorId: actor.id, note: [label, body.note].filter(Boolean).join(" — ") });
         await tell(db, order, orderOutcome === "returned" ? "delivery.returned" : "delivery.retry", { reason: label.toLowerCase() });
         await audit.log({ actor, action: "delivery.failed", entityType: "delivery", entityId: d.id, newValue: { orderId: order.id, reason: body.reason, attempts, orderOutcome } }, ctx, db);
+        await ping(db, order.id);
         return { ...(await dto(db, d.id)), orderOutcome };
       });
     },
@@ -307,11 +401,12 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         if (await repo.activeForOrder(db, orderId)) throw conflict("ALREADY_ASSIGNED", "This order already has a rider.");
         const rider = await riderAccess.requireAssignable(db, body.riderId, { lock: true }); // 2. rider: active user + role + permission + active profile
         const d = await openAssignment(db, { actor, order, rider });                  // 3. delivery (new row)
-        await moveOrder(db, order, "assigned", { patch: { partner: partnerOf(rider) } });
+        await moveOrder(db, order, "assigned", { patch: { partner: partnerOf(rider), ...etaPatch(d) } });
         await repo.addEvent(db, { deliveryId: d.id, orderId, type: "assigned", actorId: actor.id, note: rider.full_name });
         await tell(db, order, "delivery.assigned", { riderName: rider.full_name });
         await notifications.emit(db, { userId: rider.user_id, type: "rider.assigned", data: { orderId, number: order.number } });
         await audit.log({ actor, action: "delivery.assigned", entityType: "delivery", entityId: d.id, newValue: { orderId, riderId: rider.id } }, ctx, db);
+        await ping(db, orderId);
         return dto(db, d.id);
       });
     },
@@ -343,6 +438,7 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         await moveOrder(db, order, "packed", { note: recovering ? "Rider no longer authorized — recovered by dispatch" : "Rider unassigned", patch: { partner: null } });
         await repo.addEvent(db, { deliveryId: d.id, orderId: order.id, type: "unassigned", actorId: actor.id, note: body?.reason ?? null });
         await audit.log({ actor, action: "delivery.unassigned", entityType: "delivery", entityId: d.id, newValue: { orderId: order.id, reason: body?.reason ?? null, recovered: recovering } }, ctx, db);
+        await ping(db, order.id);
         return dto(db, d.id);
       });
     },
@@ -360,12 +456,13 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         if (old.rider_id === body.riderId) throw badRequest("SAME_RIDER", "That rider already has this delivery.");
         await repo.updateDelivery(db, old.id, { status: "cancelled", cancelReason: "reassigned", closedAt: clock() });
         const d = await openAssignment(db, { actor, order, rider });
-        await orders.updateStatus(db, order.id, order.status, { partner: partnerOf(rider) });
+        await orders.updateStatus(db, order.id, order.status, { partner: partnerOf(rider), ...etaPatch(d) });
         await orders.addHistory(db, order.id, "assigned", `Reassigned to ${rider.full_name}`);
         await repo.addEvent(db, { deliveryId: d.id, orderId: order.id, type: "assigned", actorId: actor.id, note: `reassigned from ${old.rider_name} to ${rider.full_name}` });
         await tell(db, order, "delivery.assigned", { riderName: rider.full_name });
         await notifications.emit(db, { userId: rider.user_id, type: "rider.assigned", data: { orderId: order.id, number: order.number } });
         await audit.log({ actor, action: "delivery.reassigned", entityType: "delivery", entityId: d.id, oldValue: { riderId: old.rider_id }, newValue: { riderId: rider.id, orderId: order.id } }, ctx, db);
+        await ping(db, order.id);
         return dto(db, d.id);
       });
     },
@@ -417,27 +514,85 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
       });
     },
 
-    // =============================================================== customer / staff: tracking
+    // =============================================================== tracking
     /**
-     * Owner, or staff who can see every order / manage dispatch. The rider's PRECISE position goes only to the owner and
-     * to dispatch (delivery:manage) — other order-readers (support, accounts) see status and history but never coordinates —
-     * and only while the run is live (picked up).
+     * One snapshot, shaped for WHO is asking:
+     *   customer (owner)   status, steps, ETA, rider (name/phone/photo) and the rider's live position while active, both end points
+     *   dispatcher         the same, plus staff-only event notes
+     *   seller (own order) status, steps, ETA, rider name — NO live position, NO customer coordinates
+     *   other staff        status and history only (as before)
+     * The rider's PRECISE position goes only to the owner and dispatch, only while the run is active, and never after it ends.
+     * A caller who may not see the order gets "not found" — never "forbidden" (no existence leak).
      */
     async tracking(actor, orderId) {
       const order = await orders.getById(pool, orderId);
-      const owner = !!order && order.user_id === actor?.id;
-      const dispatcher = can(actor, "delivery:manage");
-      if (!order || (!owner && !dispatcher && !can(actor, "orders:read_all"))) throw notFound("ORDER_NOT_FOUND", "Order not found");
-      const [active, events, failed] = await Promise.all([repo.activeForOrder(pool, orderId), repo.eventsForOrder(pool, orderId), repo.countFailedForOrder(pool, orderId)]);
-      const live = (owner || dispatcher) && active?.status === "picked_up" && active.last_lat != null;
+      const who = await viewerOf(pool, actor, order);
+      if (!order || !who.any) throw notFound("ORDER_NOT_FOUND", "Order not found");
+      const [active, events, failed, branch] = await Promise.all([
+        repo.activeForOrder(pool, orderId), repo.eventsForOrder(pool, orderId), repo.countFailedForOrder(pool, orderId), repos.catalog.getBranch(pool, order.branch_id),
+      ]);
+      const now = clock();
+      const final = isFinalOrder(order.status);
+      const stage = stageOf(order.status, active);
+      const mayTrack = who.owner || who.dispatcher;
+      const live = mayTrack && !final && !!active && canShareLocation(active.status) && active.last_lat != null;
+      const eta = final ? null : (() => {
+        const at = active?.estimated_arrival ?? order.eta ?? null;
+        return { at, minutes: minutesUntil(at, now), source: active?.eta_source ?? "estimate", updatedAt: active?.eta_updated_at ?? null };
+      })();
+      const rider = active && !final ? {
+        name: active.rider_name, vehicle: active.rider_vehicle ?? null, photoUrl: active.rider_photo ?? null,
+        ...(mayTrack ? { phone: active.rider_phone } : {}),
+      } : null;
       return {
-        orderId, orderStatus: order.status, failedAttempts: failed,
+        orderId, orderNumber: order.number, orderStatus: order.status, failedAttempts: failed, final,
+        stage, steps: stepsFor(stage), eta,
+        live,
+        pickup: mayTrack && !final ? { ...(point(active?.pickup_lat ?? branch?.lat, active?.pickup_lng ?? branch?.lng) ?? {}), name: branch?.name ?? null } : null,
+        destination: mayTrack && !final ? point(active?.customer_lat ?? order.address?.lat, active?.customer_lng ?? order.address?.lng) : null,
         delivery: active ? {
-          status: active.status, rider: order.partner ?? null,
+          status: active.status, rider,
           location: live ? { lat: active.last_lat, lng: active.last_lng, accuracy: active.last_accuracy ?? null, updatedAt: active.last_located_at } : null,
         } : null,
-        events: events.filter((e) => dispatcher || CUSTOMER_EVENTS.includes(e.type)).map((e) => toEventDto(e, { staff: dispatcher })),
+        events: events.filter((e) => who.dispatcher || CUSTOMER_EVENTS.includes(e.type)).map((e) => toEventDto(e, { staff: who.dispatcher })),
       };
+    },
+
+    /**
+     * A shop asks riders to come and collect a packed order. Riders already see packed, unclaimed orders in their queue — this
+     * is the nudge: it notifies every on-duty rider with spare capacity. Only the shop that is the order's sole seller (or
+     * dispatch) may ask, only for a packed + payment-cleared + unassigned order, and not more than once per cooldown.
+     */
+    async requestDelivery(actor, orderId, ctx) {
+      return tx(async (db) => {
+        const order = await lockOrder(db, orderId);                                   // order only
+        const who = await viewerOf(db, actor, order);
+        if (!who.dispatcher) {
+          const shop = who.seller ? await repos.sellers.getByOwner(db, actor.id) : null;
+          const items = shop ? await orders.items(db, orderId) : [];
+          if (!shop || items.length === 0 || !items.every((i) => i.seller_id === shop.id)) throw notFound("ORDER_NOT_FOUND", "Order not found");
+        }
+        if (order.status !== "packed") throw conflict("NOT_DISPATCHABLE", `Order is "${order.status}" — a delivery can be requested once it is packed.`);
+        assertPaymentCleared(order);
+        if (await repo.activeForOrder(db, orderId)) throw conflict("ALREADY_ASSIGNED", "This order already has a delivery partner.");
+        const last = await repo.lastEventAt(db, orderId, "delivery_requested");
+        if (last && clock() - new Date(last) < DELIVERY_RULES.requestCooldownMs) throw conflict("ALREADY_REQUESTED", "Delivery partners were already notified a moment ago. Give them a couple of minutes.");
+        const riders = await repo.availableRiderUserIds(db);
+        for (const userId of riders) await notifications.emit(db, { userId, type: "rider.delivery_requested", data: { orderId, number: order.number } });
+        await repo.addEvent(db, { orderId, type: "delivery_requested", actorId: actor.id, note: `${riders.length} rider(s) notified` });
+        await audit.log({ actor, action: "delivery.requested", entityType: "order", entityId: orderId, newValue: { notified: riders.length } }, ctx, db);
+        await ping(db, orderId);
+        return { requested: true, notified: riders.length };
+      });
+    },
+
+    /** Dispatch sets where a branch is (the pickup point for every order from it). */
+    async setBranchLocation(actor, branchId, body, ctx) {
+      if (!can(actor, "delivery:manage")) throw forbidden();
+      const row = await repo.setBranchLocation(pool, branchId, body);
+      if (!row) throw notFound("BRANCH_NOT_FOUND", "Branch not found");
+      await audit.log({ actor, action: "branch.location_set", entityType: "branch", entityId: branchId, newValue: { lat: body.lat, lng: body.lng } }, ctx);
+      return { id: row.id, name: row.name, lat: row.lat, lng: row.lng };
     },
   };
 }

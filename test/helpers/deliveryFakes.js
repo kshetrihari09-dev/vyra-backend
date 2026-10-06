@@ -12,7 +12,8 @@ export function createFakeDelivery() {
     const o = db.orders.find((x) => x.id === d.order_id);
     const r = db.riders.find((x) => x.id === d.rider_id);
     return { ...d, order_number: o.number, order_status: o.status, branch_id: o.branch_id, order_total: o.total, payment_method: o.payment_method,
-      payment_status: o.payment_status, otp_required: o.otp_required, eta: o.eta, order_address: o.address, rider_name: r.full_name,
+      payment_status: o.payment_status, otp_required: o.otp_required, eta: o.eta, order_address: o.address, rider_name: db.users.get(r.user_id)?.name ?? r.full_name,
+      rider_phone: r.phone, rider_vehicle: r.vehicle, rider_photo: r.photo_url ?? null,
       item_count: (db.orderItems.get(o.id) ?? []).length };
   };
   const rolesOf = (userId) => db.userRoles.filter((r) => r.userId === userId).map((r) => r.role);
@@ -33,7 +34,7 @@ export function createFakeDelivery() {
     },
     async updateRider(_d, id, patch) {
       const r = db.riders.find((x) => x.id === id);
-      for (const [k, col] of Object.entries({ phone: "phone", vehicle: "vehicle", status: "status", isAvailable: "is_available" })) if (patch[k] !== undefined) r[col] = patch[k];
+      for (const [k, col] of Object.entries({ phone: "phone", vehicle: "vehicle", status: "status", isAvailable: "is_available", photoUrl: "photo_url" })) if (patch[k] !== undefined) r[col] = patch[k];
       return withName(r);
     },
     async listRiders() { return db.riders.map(withName); },
@@ -41,11 +42,13 @@ export function createFakeDelivery() {
     async getDeliveryRef(_d, id) { const d = db.deliveries.find((x) => x.id === id); return d ? { id: d.id, order_id: d.order_id, rider_id: d.rider_id } : null; },
     async countActiveForRider(_d, riderId) { return db.deliveries.filter((d) => d.rider_id === riderId && ACTIVE.includes(d.status)).length; },
 
-    async insertDelivery(_d, { orderId, riderId, status, assignedBy = null, selfClaimed = false, acceptedAt = null }) {
+    async insertDelivery(_d, { orderId, riderId, status, assignedBy = null, selfClaimed = false, acceptedAt = null, pickup = null, customer = null, estimatedArrival = null, etaSource = null }) {
       if (db.deliveries.some((d) => d.order_id === orderId && ACTIVE.includes(d.status))) throw Object.assign(new Error("duplicate key"), { code: "23505" });
       const row = { id: `del-${++db.seq}`, order_id: orderId, rider_id: riderId, status, assigned_by: assignedBy, self_claimed: selfClaimed, created_at: new Date(),
         accepted_at: acceptedAt, picked_up_at: null, delivered_at: null, closed_at: null, failure_reason: null, failure_note: null, cancel_reason: null, cash_collected: null,
-        last_lat: null, last_lng: null, last_accuracy: null, last_located_at: null };
+        last_lat: null, last_lng: null, last_accuracy: null, last_located_at: null,
+        pickup_lat: pickup?.lat ?? null, pickup_lng: pickup?.lng ?? null, customer_lat: customer?.lat ?? null, customer_lng: customer?.lng ?? null,
+        estimated_arrival: estimatedArrival, eta_updated_at: estimatedArrival ? new Date() : null, eta_source: etaSource, arrived_pickup_at: null, started_at: null };
       db.deliveries.push(row); return view(row);
     },
     async getDelivery(_d, id) { const d = db.deliveries.find((x) => x.id === id); return d ? view(d) : null; },
@@ -53,7 +56,8 @@ export function createFakeDelivery() {
     async updateDelivery(_d, id, patch) {
       const d = db.deliveries.find((x) => x.id === id);
       const map = { status: "status", acceptedAt: "accepted_at", pickedUpAt: "picked_up_at", deliveredAt: "delivered_at", closedAt: "closed_at", failureReason: "failure_reason", failureNote: "failure_note",
-        cancelReason: "cancel_reason", cashCollected: "cash_collected", lastLat: "last_lat", lastLng: "last_lng", lastAccuracy: "last_accuracy", lastLocatedAt: "last_located_at" };
+        cancelReason: "cancel_reason", cashCollected: "cash_collected", lastLat: "last_lat", lastLng: "last_lng", lastAccuracy: "last_accuracy", lastLocatedAt: "last_located_at",
+        arrivedPickupAt: "arrived_pickup_at", startedAt: "started_at", estimatedArrival: "estimated_arrival", etaUpdatedAt: "eta_updated_at", etaSource: "eta_source" };
       for (const [k, col] of Object.entries(map)) if (patch[k] !== undefined) d[col] = patch[k];
       return view(d);
     },
@@ -67,8 +71,11 @@ export function createFakeDelivery() {
     async addLocation(_d, deliveryId, p) { db.locations.push({ delivery_id: deliveryId, ...p }); },
     async purgeLocations(_d, deliveryId) {
       db.locations = db.locations.filter((l) => l.delivery_id !== deliveryId);
-      Object.assign(db.deliveries.find((d) => d.id === deliveryId), { last_lat: null, last_lng: null, last_accuracy: null, last_located_at: null });
+      Object.assign(db.deliveries.find((d) => d.id === deliveryId), { last_lat: null, last_lng: null, last_accuracy: null, last_located_at: null, customer_lat: null, customer_lng: null });
     },
+    async availableRiderUserIds() { return db.riders.filter((r) => r.is_available && r.status === "active").map((r) => r.user_id); },
+    async lastEventAt(_d, orderId, type) { const hit = db.events.filter((e) => e.order_id === orderId && e.type === type).map((e) => e.at); return hit.length ? new Date(Math.max(...hit)) : null; },
+    async setBranchLocation(_d, id, { lat, lng }) { const b = db.branches[id]; if (!b) return null; Object.assign(b, { lat, lng }); return { id, name: b.name ?? id, lat, lng }; },
     async addEvent(_d, e) { db.events.push({ delivery_id: e.deliveryId ?? null, order_id: e.orderId, type: e.type, actor_id: e.actorId ?? null, note: e.note ?? null, at: new Date() }); },
     async eventsForOrder(_d, orderId) { return db.events.filter((e) => e.order_id === orderId); },
   };
@@ -88,7 +95,11 @@ export function createFakeDelivery() {
     async markCodCollected(_d, orderId) { db.payments.push({ orderId, action: "cod_collected" }); },
     async markCodNotCollected(_d, orderId) { db.payments.push({ orderId, action: "cod_not_collected" }); },
   };
-  return { ...base, payments, repos: { ...base.repos, delivery, users, roles } };
+  const orders = {
+    ...base.repos.orders,
+    async activeDeliveries(_d, ids) { const m = new Map(); for (const d of db.deliveries) if (ids.includes(d.order_id) && ACTIVE.includes(d.status)) m.set(d.order_id, d); return m; },
+  };
+  return { ...base, payments, repos: { ...base.repos, orders, delivery, users, roles } };
 }
 
 /** Actors */

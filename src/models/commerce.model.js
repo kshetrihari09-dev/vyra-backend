@@ -1,17 +1,19 @@
 import { actionsFor } from "../domain/orderRules.js";
+import { stageOf } from "../domain/tracking.js";
 import { toNumber } from "../utils/text.js";
 
 export const toAddressDto = (r) => ({
   id: r.id, label: r.label, name: r.name, phone: r.phone, line1: r.line1, line2: r.line2 ?? "", city: r.city ?? "", zip: r.zip ?? "",
   provinceId: r.province_id ?? null, districtId: r.district_id ?? null, municipalityId: r.municipality_id ?? null, ward: r.ward ?? "",
   instructions: r.instructions ?? "", isDefault: r.is_default,
+  lat: r.lat ?? null, lng: r.lng ?? null,
 });
 
 /** `otp` is the derived hand-off code (utils/deliveryCode.js) and is passed in ONLY for the order's owner, and only while
  *  the order is in the delivery phase (domain/orderRules.js) — the rider must never receive it (they get it from the
  *  customer), and it is never stored. `sellerView` is set only when a shop owner (not the buyer) is looking at the order:
  *  `items` has already been cut down to their own lines and `soleSeller` says whether that is the whole basket. */
-export function toOrderDto(r, { items = [], history = [], otp = undefined, sellerView = undefined } = {}) {
+export function toOrderDto(r, { items = [], history = [], otp = undefined, sellerView = undefined, active = null } = {}) {
   const totals = { subtotal: toNumber(r.subtotal), discount: toNumber(r.discount), deliveryFee: toNumber(r.delivery_fee), tax: toNumber(r.tax), total: toNumber(r.total) };
   const dto = {
     id: r.id, number: r.number, placedAt: r.placed_at, storeId: r.branch_id, status: r.status,
@@ -34,7 +36,8 @@ export function toOrderDto(r, { items = [], history = [], otp = undefined, selle
     orderId: r.id, orderNumber: r.number,
     ...totals,                                   // subtotal, discount, deliveryFee, tax, total
     store: { id: r.branch_id },
-    delivery: { status: r.status, partner: r.partner ?? null, eta: r.eta, deliveredAt: r.delivered_at, otpRequired: r.otp_required },
+    // `stage` is the customer-facing progress (domain/tracking.js) derived from the order + its active delivery — never stored.
+    delivery: { status: r.status, partner: r.partner ?? null, eta: r.eta, deliveredAt: r.delivered_at, otpRequired: r.otp_required, stage: stageOf(r.status, active), etaSource: active?.eta_source ?? null },
     timestamps: { placedAt: r.placed_at, updatedAt: r.updated_at ?? null, deliveredAt: r.delivered_at, cancelledAt: r.cancelled_at, returnedAt: r.returned_at },
     // What may happen next, decided by the backend rules (domain/orderRules.js): the next fulfilment step, whether the
     // payment gate currently blocks it, and whether cancelling is still possible.

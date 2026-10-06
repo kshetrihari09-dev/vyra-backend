@@ -48,6 +48,15 @@ export function createOrdersRepository() {
       return (await db.query("SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [orderId])).rows;
     },
 
+    /** The active delivery (if any) of each order, for the progress summary on order lists. Read-only. */
+    async activeDeliveries(db, orderIds) {
+      const out = new Map();
+      if (!orderIds.length) return out;
+      const { rows } = await db.query(
+        "SELECT order_id, status, arrived_pickup_at, started_at, eta_source FROM deliveries WHERE order_id = ANY($1) AND status IN ('assigned','accepted','picked_up')", [orderIds]);
+      for (const r of rows) out.set(r.order_id, r);
+      return out;
+    },
     async itemsForOrders(db, orderIds) {
       if (!orderIds.length) return new Map();
       const { rows } = await db.query("SELECT * FROM order_items WHERE order_id = ANY($1::uuid[]) ORDER BY order_id, id", [orderIds]);

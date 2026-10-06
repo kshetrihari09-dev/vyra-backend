@@ -1,11 +1,12 @@
 import { toOrderDto } from "../models/commerce.model.js";
+import { noRealtime } from "./realtime.service.js";
 import { badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
 
 import { FINAL, OTP_VISIBLE_STATUSES, STAFF_STAGES, assertPaymentCleared, assertTransition, canCancelFrom } from "../domain/orderRules.js";
 
 const can = (actor, perm) => !!actor?.permissions?.includes(perm);
 
-export function createOrdersService({ pool, withTx, repos, pricing, audit, prescriptions, payments, codes, notifications = { emit: async () => null } }) {
+export function createOrdersService({ pool, withTx, repos, pricing, audit, prescriptions, payments, codes, notifications = { emit: async () => null }, realtime = noRealtime }) {
   const { orders: repo, addresses, catalog } = repos;
 
   /** The handover code is shown to the order's owner only — not to riders, dispatch, sellers or other staff — and only
@@ -31,7 +32,9 @@ export function createOrdersService({ pool, withTx, repos, pricing, audit, presc
 
   async function hydrate(db, row, actor, shop) {
     const [items, history] = await Promise.all([repo.items(db, row.id), repo.history(db, row.id)]);
-    return toOrderDto(row, { ...viewFor(row, items, actor, shop), history, otp: otpFor(row, actor) });
+    // Sequential on purpose: `db` may be a single transaction client, and pg warns (soon errors) when more than two queries queue on it.
+    const active = await repo.activeDeliveries(db, [row.id]);
+    return toOrderDto(row, { ...viewFor(row, items, actor, shop), history, otp: otpFor(row, actor), active: active.get(row.id) ?? null });
   }
 
   /** Throws "not found" (never "forbidden" — no existence leak) unless the caller is the buyer, staff, or a shop with a line in it. */
@@ -66,9 +69,10 @@ export function createOrdersService({ pool, withTx, repos, pricing, audit, presc
         rows = [...mine, ...theirs].filter((r) => (seen.has(r.id) ? false : seen.add(r.id)) && (!status || r.status === status))
           .sort((a, b) => new Date(b.placed_at) - new Date(a.placed_at));
       }
-      const itemsByOrder = await repo.itemsForOrders(pool, rows.map((r) => r.id));
+      const ids = rows.map((r) => r.id);
+      const [itemsByOrder, activeByOrder] = await Promise.all([repo.itemsForOrders(pool, ids), repo.activeDeliveries(pool, ids)]);
       return Promise.all(rows.map(async (r) => toOrderDto(r, {
-        ...viewFor(r, itemsByOrder.get(r.id) ?? [], actor, shop), history: await repo.history(pool, r.id), otp: otpFor(r, actor),
+        ...viewFor(r, itemsByOrder.get(r.id) ?? [], actor, shop), history: await repo.history(pool, r.id), otp: otpFor(r, actor), active: activeByOrder.get(r.id) ?? null,
       })));
     },
 
@@ -106,7 +110,7 @@ export function createOrdersService({ pool, withTx, repos, pricing, audit, presc
 
         const number = await repo.nextNumber(db);
         const otpRequired = branch.otp_required;
-        const addressSnapshot = { label: address.label, name: address.name, phone: address.phone, line1: address.line1, line2: address.line2, city: address.city, zip: address.zip, provinceId: address.province_id, districtId: address.district_id, municipalityId: address.municipality_id, ward: address.ward, instructions: address.instructions };
+        const addressSnapshot = { label: address.label, name: address.name, phone: address.phone, line1: address.line1, line2: address.line2, city: address.city, zip: address.zip, provinceId: address.province_id, districtId: address.district_id, municipalityId: address.municipality_id, ward: address.ward, instructions: address.instructions, lat: address.lat ?? null, lng: address.lng ?? null };
         const order = await repo.insert(db, {
           number, userId: actor.id, branchId, paymentMethod: body.paymentMethod, addressId: address.id, address: addressSnapshot,
           deliveryOptionId: body.deliveryOptionId, deliveryFee: totals.deliveryFee, slot: body.slot ?? null,
@@ -167,6 +171,7 @@ export function createOrdersService({ pool, withTx, repos, pricing, audit, presc
         const updated = await repo.updateStatus(db, id, body.status, patch);
         await repo.addHistory(db, id, body.status);
         await audit.log({ actor, action: "order.status_changed", entityType: "order", entityId: id, oldValue: { status: row.status }, newValue: { status: body.status } }, ctx, db);
+        await realtime.publish(db, id);
         if (body.status === "confirmed") await notifications.emit(db, { userId: row.user_id, type: "order.confirmed", data: { orderId: id, number: row.number } });
         if (body.status === "packed") await notifications.emit(db, { userId: row.user_id, type: "order.packed", data: { orderId: id, number: row.number } });
         return hydrate(db, updated, actor, await shopOf(db, actor));
@@ -198,6 +203,7 @@ export function createOrdersService({ pool, withTx, repos, pricing, audit, presc
         const updated = await repo.updateStatus(db, id, "cancelled", { cancelledAt: new Date(), cancelReason: body?.reason ?? null, ...settled });
         await repo.addHistory(db, id, "cancelled", body?.reason ?? null);
         await audit.log({ actor, action: "order.cancelled", entityType: "order", entityId: id, oldValue: { status: row.status }, newValue: { status: "cancelled", reason: body?.reason ?? null } }, ctx, db);
+        await realtime.publish(db, id);
         await notifications.emit(db, { userId: row.user_id, type: "order.cancelled", data: { orderId: id, number: row.number, reason: owner ? null : body?.reason ?? null } });
         return hydrate(db, updated, actor, await shopOf(db, actor));
       });

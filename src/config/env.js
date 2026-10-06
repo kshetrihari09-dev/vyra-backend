@@ -59,6 +59,8 @@ export function loadConfig(env = process.env) {
     nodeEnv, isProd, isTest: nodeEnv === "test",
     port: int("PORT", 4000, { min: 1 }),
     logLevel: env.LOG_LEVEL || "info",
+    // Server-side routing (ETA). Optional: without it ETAs fall back to a labelled straight-line estimate. NEVER the browser's public token.
+    maps: { accessToken: env.MAPBOX_ACCESS_TOKEN || "" },
     trustProxy: int("TRUST_PROXY", 0),
     appUrl: (env.APP_URL || "http://localhost:5173").replace(/\/+$/, ""),
     cors: { origins: corsOrigins },

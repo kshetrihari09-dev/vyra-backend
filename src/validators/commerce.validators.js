@@ -18,6 +18,11 @@ export const addressBody = z.object({
   ward: text(20).nullable().optional(),
   instructions: text(500).nullable().optional(),
   isDefault: z.boolean().default(false),
+  // Map pin (optional). Omitted on update = keep the saved pin; null = clear it. A pin is both coordinates or neither.
+  lat: z.number().min(-90).max(90).nullable().optional(),
+  lng: z.number().min(-180).max(180).nullable().optional(),
+}).superRefine((a, ctx) => {
+  if ((a.lat == null) !== (a.lng == null)) ctx.addIssue({ code: "custom", path: ["lat"], message: "A map pin needs both latitude and longitude" });
 });
 
 export const addressIdParams = z.object({ id: z.string().uuid() });

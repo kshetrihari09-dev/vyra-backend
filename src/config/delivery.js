@@ -23,6 +23,8 @@ export const DELIVERY_RULES = {
   maxActivePerRider: 5,        // simultaneous assigned/accepted/picked-up deliveries per rider
   otpMaxAttempts: 5,           // wrong handover codes per order before it locks (a dispatcher must reset it)
   locationMinIntervalMs: 5000, // faster location pings than this are dropped, not stored
+  etaRefreshMs: 30_000,        // how often a live ping may trigger an ETA recalculation (it can call a routing API)
+  requestCooldownMs: 120_000,  // a shop may re-send "request delivery" for the same order at most this often
 };
 
 export const FAILURE_REASONS = {

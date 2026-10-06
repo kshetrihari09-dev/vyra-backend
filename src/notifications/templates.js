@@ -28,6 +28,12 @@ export const TEMPLATES = {
     title: () => "Order cancelled",
     message: (d) => `Order ${d.number} was cancelled${d.reason ? `: ${d.reason}` : "."}`,
   },
+  // ---- rider: a shop is asking for a pickup (ids + order number only — no address, no customer details)
+  "rider.delivery_requested": {
+    kind: "delivery",
+    title: () => "Delivery requested",
+    message: (d) => `A shop has order ${d.number} packed and ready. Open the Available tab to take it.`,
+  },
   // ---- customer: delivery
   "delivery.assigned": {
     kind: "delivery",

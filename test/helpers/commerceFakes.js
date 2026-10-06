@@ -3,7 +3,7 @@ import { formatOrderNumber } from "../../src/repositories/orders.repository.js";
 /** In-memory repos for pricing/coupons/orders/addresses service tests — real services, fake data layer. */
 export function createFakeCommerce() {
   const db = {
-    branches: { "store-01": { id: "store-01", otp_required: true }, "store-02": { id: "store-02", otp_required: false } },
+    branches: { "store-01": { id: "store-01", otp_required: true, name: "Vyra Central", lat: 27.7172, lng: 85.324 }, "store-02": { id: "store-02", otp_required: false } },
     branchOrder: ["store-01", "store-02"],
     products: [
       { id: "soap", name: "Soap", category_id: "grocery", brand_id: "b1", price: 5, sale_price: null, tax_percent: 5, moq: 1, max_qty: 10, status: "active", prescription_required: false, seller_id: "novatech" },
@@ -116,6 +116,7 @@ export function createFakeCommerce() {
     async addHistory(_d, orderId, status, note = null) { db.orderHistory.get(orderId).push({ status, note, at: new Date() }); },
     async getById(_d, id) { return db.orders.find((o) => o.id === id) ?? null; },
     async items(_d, orderId) { return db.orderItems.get(orderId) ?? []; },
+    async activeDeliveries() { return new Map(); }, // overridden by deliveryFakes, which owns deliveries
     async itemsForOrders(_d, ids) { const m = new Map(); for (const id of ids) m.set(id, db.orderItems.get(id) ?? []); return m; },
     async history(_d, orderId) { return db.orderHistory.get(orderId) ?? []; },
     async listMine(_d, userId) { return db.orders.filter((o) => o.user_id === userId); },
