@@ -16,10 +16,10 @@ export function createOrdersRepository() {
 
     async insert(db, o) {
       const { rows } = await db.query(
-        `INSERT INTO orders (number, user_id, branch_id, status, payment_method, address_id, address, delivery_option_id, delivery_fee, slot,
+        `INSERT INTO orders (number, user_id, branch_id, status, payment_method, address_id, address, delivery_option_id, delivery_fee, delivery_distance_km, slot,
                              subtotal, discount, tax, total, coupon_code, notes, instructions, otp_nonce, otp_required, eta, is_demo)
-         VALUES ($1,$2,$3,'placed',$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
-        [o.number, o.userId, o.branchId, o.paymentMethod, o.addressId ?? null, JSON.stringify(o.address), o.deliveryOptionId, o.deliveryFee, o.slot ?? null,
+         VALUES ($1,$2,$3,'placed',$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
+        [o.number, o.userId, o.branchId, o.paymentMethod, o.addressId ?? null, JSON.stringify(o.address), o.deliveryOptionId, o.deliveryFee, o.deliveryDistanceKm ?? null, o.slot ?? null,
          o.subtotal, o.discount, o.tax, o.total, o.couponCode ?? null, o.notes ?? null, o.instructions ?? null, o.otpNonce ?? null, o.otpRequired, o.eta ?? null, o.isDemo ?? false],
       );
       return rows[0];

@@ -1,4 +1,5 @@
 import { toOrderDto } from "../models/commerce.model.js";
+import { outOfRangeMessage } from "../domain/deliveryPricing.js";
 import { noRealtime } from "./realtime.service.js";
 import { badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
 
@@ -103,7 +104,8 @@ export function createOrdersService({ pool, withTx, repos, pricing, audit, presc
         const coveringPrescriptionIds = await prescriptions.assertCoverage(db, actor.id, rxProductIds);
 
         const isFirstOrder = (await repo.countForUser(db, actor.id)) === 0;
-        const totals = await pricing.computeTotals(db, lines, { couponCode: body.couponCode, deliveryOptionId: body.deliveryOptionId, userId: actor.id, isFirstOrder, lock: true });
+        const totals = await pricing.computeTotals(db, lines, { couponCode: body.couponCode, deliveryOptionId: body.deliveryOptionId, userId: actor.id, isFirstOrder, lock: true, branch, destination: address });
+        if (!totals.delivery.deliverable) throw badRequest("OUT_OF_DELIVERY_RANGE", outOfRangeMessage(totals.delivery, branch.name), [{ path: "body.addressId", message: "This address is outside our delivery area" }]);
         if (body.couponCode && totals.couponResult && !totals.couponResult.ok) throw badRequest("COUPON_INVALID", totals.couponResult.reason, [{ path: "body.couponCode", message: totals.couponResult.reason }]);
 
         for (const r of rowIds) await repos.inventory.reserve(db, r.rowId, r.qty);
@@ -113,7 +115,7 @@ export function createOrdersService({ pool, withTx, repos, pricing, audit, presc
         const addressSnapshot = { label: address.label, name: address.name, phone: address.phone, line1: address.line1, line2: address.line2, city: address.city, zip: address.zip, provinceId: address.province_id, districtId: address.district_id, municipalityId: address.municipality_id, ward: address.ward, instructions: address.instructions, lat: address.lat ?? null, lng: address.lng ?? null };
         const order = await repo.insert(db, {
           number, userId: actor.id, branchId, paymentMethod: body.paymentMethod, addressId: address.id, address: addressSnapshot,
-          deliveryOptionId: body.deliveryOptionId, deliveryFee: totals.deliveryFee, slot: body.slot ?? null,
+          deliveryOptionId: body.deliveryOptionId, deliveryFee: totals.deliveryFee, deliveryDistanceKm: totals.delivery.distanceKm, slot: body.slot ?? null,
           subtotal: totals.subtotal, discount: totals.discount, tax: totals.tax, total: totals.total,
           couponCode: totals.couponResult?.ok ? totals.couponResult.code : null, notes: body.notes ?? null, instructions: body.instructions ?? null,
           otpNonce: otpRequired ? codes.newNonce() : null, otpRequired, eta: new Date(Date.now() + 35 * 60_000),

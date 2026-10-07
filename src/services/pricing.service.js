@@ -1,4 +1,4 @@
-import { deliveryFeeFor } from "../config/delivery.js";
+import { quoteDelivery } from "../domain/deliveryPricing.js";
 import { round2 } from "../utils/text.js";
 
 /**
@@ -60,15 +60,17 @@ export function createPricingService({ repos, coupons }) {
       return { lines, issues, rowIds };
     },
 
-    async computeTotals(db, lines, { couponCode = null, deliveryOptionId = "standard", userId = null, isFirstOrder = false, lock = false } = {}) {
+    /** `branch` / `destination` are {lat,lng} (or null/unknown): the delivery charge depends on the distance between them. */
+    async computeTotals(db, lines, { couponCode = null, deliveryOptionId = "standard", userId = null, isFirstOrder = false, lock = false, branch = null, destination = null } = {}) {
       const subtotal = round2(lines.reduce((s, l) => s + l.lineTotal, 0));
       const couponResult = couponCode ? await coupons.evaluate(db, couponCode, lines, { userId, isFirstOrder, lock }) : null;
       const discount = couponResult?.ok ? couponResult.discount : 0;
       const taxable = Math.max(subtotal - discount, 0);
       const tax = round2(lines.reduce((s, l) => s + l.lineTotal * (l.taxPercent / 100), 0));
-      const deliveryFee = deliveryFeeFor(deliveryOptionId, taxable);
+      const delivery = quoteDelivery({ optionId: deliveryOptionId, taxable, branch, destination });
+      const deliveryFee = delivery.fee;
       const total = round2(Math.max(taxable + tax + deliveryFee, 0));
-      return { subtotal, discount, tax, deliveryFee, total, couponResult };
+      return { subtotal, discount, tax, deliveryFee, delivery, total, couponResult };
     },
   };
 }

@@ -85,7 +85,7 @@ describe("ETA estimation", () => {
 });
 
 // ------------------------------------------------------------------------------------------------ service-level behaviour
-function makeClock(start = new Date()) { // starts at the real "now": the in-memory event log stamps real time, so the two must agree
+function makeClock(start = new Date()) { // starts at the real "now": the in-memory fakes stamp REAL time, so tests advance by a generous margin (never exactly 1 ms past a limit)
   let t = new Date(start).getTime();
   const clock = () => new Date(t); clock.advance = (ms) => { t += ms; };
   return clock;
@@ -263,7 +263,7 @@ describe("ETA refresh from live pings", () => {
     const d = await e.delivery.assign(dispatcher, o.id, { riderId: r1.id }, ctx);
     await e.delivery.accept(R1, d.id, ctx);
 
-    e.clock.advance(DELIVERY_RULES.etaRefreshMs + 1);
+    e.clock.advance(DELIVERY_RULES.etaRefreshMs + 5000);
     await e.delivery.updateLocation(R1, d.id, { lat: 27.71, lng: 85.33 });
     assert.equal(calls, 1);
     let t = await e.delivery.tracking(customer, o.id);
@@ -273,7 +273,7 @@ describe("ETA refresh from live pings", () => {
     await e.delivery.updateLocation(R1, d.id, { lat: 27.711, lng: 85.331 });
     assert.equal(calls, 1);
 
-    mode = "throw"; e.clock.advance(DELIVERY_RULES.etaRefreshMs + 1);
+    mode = "throw"; e.clock.advance(DELIVERY_RULES.etaRefreshMs + 5000);
     assert.deepEqual(await e.delivery.updateLocation(R1, d.id, { lat: 27.712, lng: 85.332 }), { accepted: true }); // still accepted
     assert.equal(calls, 2);
     t = await e.delivery.tracking(customer, o.id);
@@ -286,9 +286,9 @@ describe("ETA refresh from live pings", () => {
     const r1 = await makeRider(e, "u-r1"); const o = await packedOrder(e);
     const d = await e.delivery.assign(dispatcher, o.id, { riderId: r1.id }, ctx);
     await e.delivery.accept(R1, d.id, ctx);
-    e.clock.advance(DELIVERY_RULES.etaRefreshMs + 1); await e.delivery.updateLocation(R1, d.id, { lat: 27.71, lng: 85.33 });
+    e.clock.advance(DELIVERY_RULES.etaRefreshMs + 5000); await e.delivery.updateLocation(R1, d.id, { lat: 27.71, lng: 85.33 });
     await e.delivery.pickup(R1, d.id, ctx);
-    e.clock.advance(DELIVERY_RULES.etaRefreshMs + 1); await e.delivery.updateLocation(R1, d.id, { lat: 27.705, lng: 85.331 });
+    e.clock.advance(DELIVERY_RULES.etaRefreshMs + 5000); await e.delivery.updateLocation(R1, d.id, { lat: 27.705, lng: 85.331 });
     assert.deepEqual(seen, [3, 2]);
   });
 });
@@ -332,14 +332,14 @@ describe("a shop requesting delivery", () => {
     assert.deepEqual(res, { requested: true, notified: 2 });
     assert.equal(e.notifications.emitted.filter((n) => n.type === "rider.delivery_requested").length, 2);
     await assert.rejects(e.delivery.requestDelivery(sellerNova, o.id, ctx), { code: "ALREADY_REQUESTED" });
-    e.clock.advance(DELIVERY_RULES.requestCooldownMs + 1);
+    e.clock.advance(DELIVERY_RULES.requestCooldownMs + 5000);
     await e.delivery.requestDelivery(sellerNova, o.id, ctx);
 
     await assert.rejects(e.delivery.requestDelivery(sellerMedico, o.id, ctx), { code: "ORDER_NOT_FOUND" });          // someone else's order
     await assert.rejects(e.delivery.requestDelivery(customer, o.id, ctx), { code: "ORDER_NOT_FOUND" });             // the buyer isn't the shop
 
     await e.delivery.assign(dispatcher, o.id, { riderId: r1.id }, ctx);
-    e.clock.advance(DELIVERY_RULES.requestCooldownMs + 1);
+    e.clock.advance(DELIVERY_RULES.requestCooldownMs + 5000);
     await assert.rejects(e.delivery.requestDelivery(sellerNova, o.id, ctx), { code: "NOT_DISPATCHABLE" });          // no longer packed
   });
 

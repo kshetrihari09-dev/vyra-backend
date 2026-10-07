@@ -23,6 +23,9 @@ export function deliveryRoutes({ container, controller }) {
   r.post("/rider/orders/:orderId/claim", authed, rider, validate({ params: v.orderIdParams }), controller.claim);
   r.post("/rider/deliveries/:id/accept", authed, rider, validate({ params: v.idParams }), controller.accept);
   r.post("/rider/deliveries/:id/decline", authed, rider, validate({ params: v.idParams, body: v.declineBody }), controller.decline);
+  // Public: the fee schedule (base fees + distance tiers). Nothing personal in it.
+  r.get("/delivery/pricing", controller.pricing);
+
   r.post("/rider/deliveries/:id/arrived", authed, rider, validate({ params: v.idParams }), controller.arrived);
   r.post("/rider/deliveries/:id/pickup", authed, rider, validate({ params: v.idParams }), controller.pickup);
   r.post("/rider/deliveries/:id/start", authed, rider, validate({ params: v.idParams }), controller.start);

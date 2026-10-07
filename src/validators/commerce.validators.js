@@ -38,6 +38,7 @@ export const cartPriceBody = z.object({
   couponCode: text(40).nullable().optional(),
   deliveryOptionId: z.enum(DELIVERY_OPTION_IDS).default("standard"),
   branch: z.string().min(1).optional(),
+  addressId: z.string().uuid().optional(), // lets the preview include the distance charge; ignored unless it is the caller's own address
 });
 
 export const createOrderBody = z.object({

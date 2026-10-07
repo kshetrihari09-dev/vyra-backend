@@ -37,7 +37,9 @@ export function toOrderDto(r, { items = [], history = [], otp = undefined, selle
     ...totals,                                   // subtotal, discount, deliveryFee, tax, total
     store: { id: r.branch_id },
     // `stage` is the customer-facing progress (domain/tracking.js) derived from the order + its active delivery — never stored.
-    delivery: { status: r.status, partner: r.partner ?? null, eta: r.eta, deliveredAt: r.delivered_at, otpRequired: r.otp_required, stage: stageOf(r.status, active), etaSource: active?.eta_source ?? null },
+    delivery: { status: r.status, partner: r.partner ?? null, eta: r.eta, deliveredAt: r.delivered_at, otpRequired: r.otp_required, stage: stageOf(r.status, active), etaSource: active?.eta_source ?? null,
+      // The distance the delivery charge was based on (km); null when it couldn't be known (address had no map pin).
+      distanceKm: r.delivery_distance_km == null ? null : toNumber(r.delivery_distance_km) },
     timestamps: { placedAt: r.placed_at, updatedAt: r.updated_at ?? null, deliveredAt: r.delivered_at, cancelledAt: r.cancelled_at, returnedAt: r.returned_at },
     // What may happen next, decided by the backend rules (domain/orderRules.js): the next fulfilment step, whether the
     // payment gate currently blocks it, and whether cancelling is still possible.

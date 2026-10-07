@@ -1,10 +1,21 @@
 import { clientContext, ok } from "../utils/http.js";
 import { tooManyRequests } from "../utils/errors.js";
+import { DELIVERY_DISTANCE, DELIVERY_OPTIONS } from "../config/delivery.js";
+import { tierTable } from "../domain/deliveryPricing.js";
 
 export function createDeliveryController({ services, config }) {
   const { delivery, realtime } = services;
   const actor = (req) => req.auth.user;
   return {
+    /** The published fee schedule: option base fees + the distance tiers. Static and public (the checkout page shows it anyway). */
+    async pricing(_req, res) {
+      res.set("Cache-Control", "public, max-age=300");
+      ok(res, {
+        options: Object.values(DELIVERY_OPTIONS).map((o) => ({ id: o.id, label: o.label, fee: o.fee, freeAbove: o.freeAbove ?? null })),
+        distance: { tiers: tierTable(), maxKm: DELIVERY_DISTANCE.maxKm, unknownDistanceFee: DELIVERY_DISTANCE.unknownDistanceFee },
+      });
+    },
+
     // rider
     async me(req, res) { ok(res, { rider: await delivery.me(actor(req)) }); },
     async setAvailability(req, res) { ok(res, { rider: await delivery.setAvailability(actor(req), req.valid.body.available) }); },

@@ -106,7 +106,7 @@ export function createFakeCommerce() {
     async countForUser(_d, userId) { return db.orders.filter((o) => o.user_id === userId).length; },
     async insert(_d, o) {
       const row = { id: `ord-${++db.seq}`, number: o.number, user_id: o.userId, branch_id: o.branchId, status: "placed", payment_method: o.paymentMethod,
-        payment_status: "pending", address_id: o.addressId, address: o.address, delivery_option_id: o.deliveryOptionId, delivery_fee: o.deliveryFee, slot: o.slot,
+        payment_status: "pending", address_id: o.addressId, address: o.address, delivery_option_id: o.deliveryOptionId, delivery_fee: o.deliveryFee, delivery_distance_km: o.deliveryDistanceKm ?? null, slot: o.slot,
         subtotal: o.subtotal, discount: o.discount, tax: o.tax, total: o.total, coupon_code: o.couponCode, notes: o.notes, instructions: o.instructions,
         otp_nonce: o.otpNonce, otp_attempts: 0, otp_required: o.otpRequired, partner: null, eta: o.eta, delivered_at: null, cancelled_at: null, cancel_reason: null, returned_at: null };
       db.orders.push(row); db.orderItems.set(row.id, []); db.orderHistory.set(row.id, []);

@@ -15,6 +15,33 @@ export function deliveryFeeFor(optionId, taxableAmount) {
   return opt.fee;
 }
 
+/**
+ * Distance-based delivery charge. The fee for an order is:   option base fee (above)  +  distance charge (below).
+ *
+ *   distance  = straight line between the branch and the customer's saved map pin × roadFactor, rounded UP to 0.1 km.
+ *               (Deterministic and free — no routing API — so a cart quote and the order it becomes can never disagree.)
+ *   tiers     = ascending; the first tier whose `upToKm` covers the distance sets the charge. The last tier must equal maxKm.
+ *   maxKm     = farther than this is not deliverable: the cart shows why and the order is refused.
+ *   unknownDistanceFee = charged when the distance can't be known (no pin on the address / no location on the branch), so
+ *               leaving the pin off can't be used to dodge the distance charge.
+ *
+ * The free-delivery threshold on an option (freeAbove) waives only that option's BASE fee, never the distance charge.
+ * These are business rules, kept here like the delivery options. The numbers are PLACEHOLDERS in the same scale as the
+ * option fees above — set them to your real prices.
+ */
+export const DELIVERY_DISTANCE = Object.freeze({
+  roadFactor: 1.3,
+  tiers: Object.freeze([
+    Object.freeze({ upToKm: 2, fee: 0 }),
+    Object.freeze({ upToKm: 5, fee: 1 }),
+    Object.freeze({ upToKm: 8, fee: 2 }),
+    Object.freeze({ upToKm: 12, fee: 3.5 }),
+    Object.freeze({ upToKm: 15, fee: 5 }),
+  ]),
+  maxKm: 15,
+  unknownDistanceFee: 2,
+});
+
 export const PAYMENT_METHOD_IDS = ["card", "upi", "netbanking", "cod"];
 
 /** Operational limits for the delivery module. Kept here (not in env) — they are business rules, not deployment settings. */
