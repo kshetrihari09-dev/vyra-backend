@@ -7,7 +7,7 @@ import { FINAL, OTP_VISIBLE_STATUSES, STAFF_STAGES, assertPaymentCleared, assert
 
 const can = (actor, perm) => !!actor?.permissions?.includes(perm);
 
-export function createOrdersService({ pool, withTx, repos, pricing, audit, prescriptions, payments, codes, notifications = { emit: async () => null }, realtime = noRealtime }) {
+export function createOrdersService({ pool, withTx, repos, phoneTrust = null, pricing, audit, prescriptions, payments, codes, notifications = { emit: async () => null }, realtime = noRealtime }) {
   const { orders: repo, addresses, catalog } = repos;
 
   /** The handover code is shown to the order's owner only — not to riders, dispatch, sellers or other staff — and only
@@ -89,6 +89,8 @@ export function createOrdersService({ pool, withTx, repos, pricing, audit, presc
       return withTx(async (db) => {
         const address = await addresses.get(db, actor.id, body.addressId);
         if (!address) throw badRequest("ADDRESS_NOT_FOUND", "Choose a delivery address", [{ path: "body.addressId", message: "Choose a delivery address" }]);
+        // The rider is given this number: it must be the customer's login number or one they confirmed with a code.
+        if (phoneTrust) await phoneTrust.assertTrusted(db, actor.id, address.phone);
 
         const branchId = body.branch ?? (await repos.products.branchIds(db))[0];
         const branch = await catalog.getBranch(db, branchId);

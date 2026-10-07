@@ -44,4 +44,5 @@ export const createLimiters = (config) => ({
   otpVerify: limiter(config, { windowMs: 15 * 60_000, limit: 20 }),
   passwordReset: limiter(config, { windowMs: 60 * 60_000, limit: 10 }),
   refresh: limiter(config, { windowMs: 60_000, limit: 60 }),
+  addressWrite: limiter(config, { windowMs: 60 * 60_000, limit: 40 }),
 });

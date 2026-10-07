@@ -4,14 +4,19 @@ import { validate } from "../middleware/validate.js";
 import * as v from "../validators/commerce.validators.js";
 
 /** Everything here is a signed-in customer acting on their own data, except cart pricing (works for guests too). */
-export function commerceRoutes({ container, controller }) {
+export function commerceRoutes({ container, controller, limiters = {} }) {
+  const pass = (_req, _res, next) => next();
+  const write = limiters.addressWrite ?? pass, otpStart = limiters.otpStart ?? pass, otpVerify = limiters.otpVerify ?? pass;
   const r = Router();
   const authed = authenticate(container);
   const maybe = optionalAuthenticate(container);
 
   r.get("/addresses", authed, controller.listAddresses);
-  r.post("/addresses", authed, validate({ body: v.addressBody }), controller.createAddress);
-  r.put("/addresses/:id", authed, validate({ params: v.addressIdParams, body: v.addressBody }), controller.updateAddress);
+  r.post("/addresses", authed, write, validate({ body: v.addressBody }), controller.createAddress);
+  r.put("/addresses/:id", authed, write, validate({ params: v.addressIdParams, body: v.addressBody }), controller.updateAddress);
+  // Confirm a delivery phone that is not the login number (code is texted to THAT number).
+  r.post("/addresses/phone/start", authed, otpStart, validate({ body: v.addressPhoneStart }), controller.startAddressPhone);
+  r.post("/addresses/phone/verify", authed, otpVerify, validate({ body: v.addressPhoneVerify }), controller.verifyAddressPhone);
   r.post("/addresses/:id/default", authed, validate({ params: v.addressIdParams }), controller.setDefaultAddress);
   r.delete("/addresses/:id", authed, validate({ params: v.addressIdParams }), controller.removeAddress);
 

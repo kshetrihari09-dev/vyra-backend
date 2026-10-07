@@ -31,6 +31,21 @@ export function createAddressesRepository() {
       const { rows } = await db.query("UPDATE addresses SET is_default = true WHERE id = $1 AND user_id = $2 RETURNING *", [id, userId]);
       return rows[0] || null;
     },
+    async count(db, userId) {
+      return Number((await db.query("SELECT count(*) AS n FROM addresses WHERE user_id = $1", [userId])).rows[0].n);
+    },
+    /** Numbers (other than the login mobile) this user has confirmed with a code. */
+    async isPhoneVerified(db, userId, mobile) {
+      return (await db.query("SELECT 1 FROM verified_phones WHERE user_id = $1 AND mobile = $2", [userId, mobile])).rowCount > 0;
+    },
+    async markPhoneVerified(db, userId, mobile) {
+      await db.query("INSERT INTO verified_phones (user_id, mobile) VALUES ($1, $2) ON CONFLICT (user_id, mobile) DO UPDATE SET verified_at = now()", [userId, mobile]);
+    },
+    /** Code requests this user started recently — caps how many texts one account can trigger. */
+    async countRecentPhoneChallenges(db, userId, sinceIso) {
+      const { rows } = await db.query("SELECT count(*) AS n FROM otp_challenges WHERE purpose = 'address_phone' AND payload->>'userId' = $1 AND created_at > $2", [userId, sinceIso]);
+      return Number(rows[0].n);
+    },
     async remove(db, userId, id) {
       const { rowCount } = await db.query("DELETE FROM addresses WHERE id = $1 AND user_id = $2", [id, userId]);
       return rowCount > 0;

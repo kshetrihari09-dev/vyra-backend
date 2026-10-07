@@ -33,7 +33,7 @@ export function createRoutes(container, limiters) {
   r.use("/health", healthRoutes(container));
   r.use("/auth", authRoutes({ container, controller: createAuthController(container), limiters }));
   r.use("/", catalogRoutes({ container, controller: createCatalogController(container) }));
-  r.use("/", commerceRoutes({ container, controller: createCommerceController(container) }));
+  r.use("/", commerceRoutes({ container, controller: createCommerceController(container), limiters }));
   r.use("/", inventoryRoutes({ container, controller: createInventoryController(container) }));
   r.use("/", paymentsRoutes({ container, controller: createPaymentsController(container) }));
   r.use("/", prescriptionsRoutes({ container, controller: createPrescriptionsController(container) }));

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import { createAddressesService } from "../../src/services/addresses.service.js";
+import { createPhoneTrust } from "../../src/services/phoneTrust.js";
 import { createCartService } from "../../src/services/cart.service.js";
 import { createCouponsService } from "../../src/services/coupons.service.js";
 import { createOrdersService } from "../../src/services/orders.service.js";
@@ -17,7 +18,7 @@ function setup() {
   const fake = createFakeCommerce();
   fake.db.inventory.set(fake.key("store-01", "soap", ""), { id: fake.key("store-01", "soap", ""), on_hand: 10, reserved: 0 });
   fake.db.inventory.set(fake.key("store-01", "cough-syrup", ""), { id: fake.key("store-01", "cough-syrup", ""), on_hand: 13, reserved: 0 });
-  fake.db.addresses.push({ id: "addr-1", user_id: customer.id, label: "Home", name: "Alex", phone: "+1 555 0190", line1: "24 Maple Ct", line2: null, city: "Metro", zip: "10245", is_default: true });
+  fake.db.addresses.push({ id: "addr-1", user_id: customer.id, label: "Home", name: "Alex", phone: "9812345678", line1: "24 Maple Ct", line2: null, city: "Metro", zip: "10245", is_default: true });
 
   const audit = fakeAudit();
   const withTx = (fn) => fn({});
@@ -28,8 +29,10 @@ function setup() {
   // payments.test.js — these permissive stubs keep this file's tests focused on pricing/inventory/FEFO.
   const prescriptions = { assertCoverage: async () => [], linkToOrder: async () => {} };
   const payments = { createForOrder: async () => {}, markCodCollected: async () => {}, settleOnCancel: async () => ({}) };
-  const orders = createOrdersService({ pool: {}, withTx, repos: fake.repos, pricing, audit, prescriptions, payments, codes });
-  const addresses = createAddressesService({ pool: {}, withTx, repos: fake.repos });
+  // The customer's login number is 9812345678 and no other number has been confirmed (see addressPhone.test.js for the OTP flow).
+  const phoneTrust = createPhoneTrust({ repos: { users: { getAccess: async () => ({ mobile: "9812345678" }) }, addresses: { isPhoneVerified: async () => false } } });
+  const orders = createOrdersService({ pool: {}, withTx, repos: fake.repos, phoneTrust, pricing, audit, prescriptions, payments, codes });
+  const addresses = createAddressesService({ pool: {}, withTx, repos: fake.repos, config: { auth: { refreshSecret: "s" }, otp: {} }, notifier: { sendSms: async () => {} }, audit, phoneTrust });
   return { ...fake, audit, coupons, pricing, cart, orders, addresses };
 }
 
@@ -228,15 +231,27 @@ describe("addresses", () => {
   it("the first saved address becomes the default automatically; a later default clears the previous one", async () => {
     const e = setup();
     e.db.addresses.length = 0;
-    const a = await e.addresses.create(customer.id, { label: "Home", name: "Alex", phone: "+1 555 0190", line1: "1 A St" });
+    const a = await e.addresses.create(customer.id, { label: "Home", name: "Alex", phone: "98-1234 5678", line1: "1 A St" });
     assert.equal(a.isDefault, true);
-    const b = await e.addresses.create(customer.id, { label: "Work", name: "Alex", phone: "+1 555 0190", line1: "2 B St", isDefault: true });
+    const b = await e.addresses.create(customer.id, { label: "Work", name: "Alex", phone: "+977 9812345678", line1: "2 B St", isDefault: true });
     assert.equal(b.isDefault, true);
     assert.equal((await e.addresses.list(customer.id)).find((x) => x.id === a.id).isDefault, false);
   });
 
+  it("a delivery number other than the login number is refused until it has been confirmed", async () => {
+    const e = setup();
+    await assert.rejects(e.addresses.create(customer.id, { label: "Work", name: "Alex", phone: "9811111111", line1: "3 C St" }), { code: "PHONE_NOT_VERIFIED" });
+    await assert.rejects(e.addresses.update(customer.id, "addr-1", { label: "Home", name: "Alex", phone: "9811111111", line1: "24 Maple Ct" }), { code: "PHONE_NOT_VERIFIED" });
+  });
+
+  it("an order is refused if the saved address carries an unconfirmed number", async () => {
+    const e = setup();
+    e.db.addresses.find((a) => a.id === "addr-1").phone = "9811111111";
+    await assert.rejects(e.orders.create(customer, { items: [{ productId: "soap", qty: 1 }], addressId: "addr-1", paymentMethod: "cod", deliveryOptionId: "standard", branch: "store-01" }, ctx), { code: "PHONE_NOT_VERIFIED" });
+  });
+
   it("cannot update or delete someone else's address", async () => {
     const e = setup();
-    await assert.rejects(e.addresses.update("someone-else", "addr-1", { label: "x", name: "x", phone: "+1 555 0190", line1: "x" }), { code: "ADDRESS_NOT_FOUND" });
+    await assert.rejects(e.addresses.update("someone-else", "addr-1", { label: "x", name: "x", phone: "9812345678", line1: "x" }), { code: "ADDRESS_NOT_FOUND" });
   });
 });

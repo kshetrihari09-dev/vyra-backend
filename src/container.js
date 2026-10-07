@@ -26,6 +26,7 @@ import { createRetentionJob } from "./jobs/retention.js";
 import { createScheduler } from "./jobs/scheduler.js";
 import { createNotifier } from "./services/notifier.js";
 import { createAddressesService } from "./services/addresses.service.js";
+import { createPhoneTrust } from "./services/phoneTrust.js";
 import { createCartService } from "./services/cart.service.js";
 import { createCouponsService } from "./services/coupons.service.js";
 import { createInventoryService } from "./services/inventory.service.js";
@@ -91,6 +92,7 @@ export function createContainer(config, overrides = {}) {
   const tokens = createTokenService({ secret: config.auth.jwtSecret, ttlSeconds: config.auth.accessTtlSeconds });
   const notifier = createNotifier({ driver: config.notify.driver, logger, webhookUrl: config.notify.webhookUrl, webhookSecret: config.notify.webhookSecret, timeoutMs: config.notify.timeoutMs });
   const audit = createAuditService({ repo: repos.audit, pool });
+  const phoneTrust = createPhoneTrust({ repos });
 
   // External (email/SMS) messages are only queued when a real channel exists — with "disabled" they would just retry and die.
   const notifications = createNotificationsService({ pool, repo: repos.notifications, notifier, logger, externalEnabled: config.notify.driver !== "disabled" });
@@ -101,7 +103,7 @@ export function createContainer(config, overrides = {}) {
     users: createUsersService({ pool, withTx, repos, audit }),
     catalog: createCatalogService({ pool, withTx, repos, audit }),
     search: createSearchService({ pool, repos }),
-    addresses: createAddressesService({ pool, withTx, repos }),
+    addresses: createAddressesService({ pool, withTx, repos, config, notifier, audit, phoneTrust }),
     wishlist: createWishlistService({ pool, repos }),
   };
   const coupons = createCouponsService({ repos });
@@ -123,7 +125,7 @@ export function createContainer(config, overrides = {}) {
   // Realtime tracking (SSE over LISTEN/NOTIFY). Its listener connects lazily on the first stream, so tests/scripts that build a container open nothing.
   services.realtime = createRealtime({ config, logger });
   const routing = createRoutingService({ accessToken: config.maps.accessToken, logger });
-  services.orders = createOrdersService({ pool, withTx, repos, pricing, audit, prescriptions: services.prescriptions, payments: services.payments, codes: deliveryCodes, notifications, realtime: services.realtime });
+  services.orders = createOrdersService({ pool, withTx, repos, phoneTrust, pricing, audit, prescriptions: services.prescriptions, payments: services.payments, codes: deliveryCodes, notifications, realtime: services.realtime });
   // The single rider-authorisation service: used by the /rider/* middleware AND by every delivery service call.
   services.riderAccess = createRiderAccess({ repos });
   const provisionRider = createRiderProvisioning({ repos, audit }); // one way to make a rider: admin-add and application-approval both use it

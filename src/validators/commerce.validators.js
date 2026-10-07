@@ -25,6 +25,9 @@ export const addressBody = z.object({
   if ((a.lat == null) !== (a.lng == null)) ctx.addIssue({ code: "custom", path: ["lat"], message: "A map pin needs both latitude and longitude" });
 });
 
+export const addressPhoneStart = z.object({ phone }).strict();
+export const addressPhoneVerify = z.object({ challengeId: z.string().uuid(), code: z.string().trim().regex(/^\d{4}$/, "Enter the 4-digit code") }).strict();
+
 export const addressIdParams = z.object({ id: z.string().uuid() });
 
 const lineItem = z.object({
