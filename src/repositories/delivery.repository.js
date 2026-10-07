@@ -10,10 +10,11 @@ export function createDeliveryRepository() {
       FROM riders r JOIN users u ON u.id = r.user_id`;
   const DELIVERY_VIEW = `
     SELECT d.*, o.number AS order_number, o.status AS order_status, o.branch_id, o.total AS order_total, o.payment_method,
-           o.payment_status, o.otp_required, o.eta, o.address AS order_address, u.full_name AS rider_name, r.phone AS rider_phone, r.vehicle AS rider_vehicle, r.photo_url AS rider_photo,
+           o.payment_status, o.otp_required, o.eta, o.address AS order_address, b.lat AS branch_lat, b.lng AS branch_lng, u.full_name AS rider_name, r.phone AS rider_phone, r.vehicle AS rider_vehicle, r.photo_url AS rider_photo,
            (SELECT count(*) FROM order_items oi WHERE oi.order_id = o.id) AS item_count
       FROM deliveries d
       JOIN orders o ON o.id = d.order_id
+      LEFT JOIN branches b ON b.id = o.branch_id
       JOIN riders r ON r.id = d.rider_id
       JOIN users u ON u.id = r.user_id`;
 

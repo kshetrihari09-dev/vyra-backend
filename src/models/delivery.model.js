@@ -41,7 +41,8 @@ export function toDeliveryDto(r, { events } = {}) {
     deliveredAt: r.delivered_at, arrivedPickupAt: r.arrived_pickup_at ?? null, startedAt: r.started_at ?? null,
     estimatedArrival: r.estimated_arrival ?? null, etaSource: r.eta_source ?? null,
     /** Store location (not personal data). The customer's pin is handed over only while the run is open, like the street address. */
-    pickup: pt(r.pickup_lat, r.pickup_lng),
+    // the snapshot is taken at assignment; if the branch had no pin then, use the branch's current one
+    pickup: pt(r.pickup_lat ?? r.branch_lat, r.pickup_lng ?? r.branch_lng),
     destination: OPEN_DELIVERY.includes(r.status) ? pt(r.customer_lat, r.customer_lng) : null,
     failureReason: r.failure_reason ?? null, failureNote: r.failure_note ?? null,
     cashCollected: r.cash_collected == null ? null : toNumber(r.cash_collected),
