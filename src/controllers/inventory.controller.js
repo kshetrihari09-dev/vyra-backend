@@ -13,6 +13,10 @@ export function createInventoryController({ services }) {
     async createPurchaseOrder(req, res) { ok(res, { purchaseOrder: await purchasing.createPurchaseOrder(req.auth.user, req.valid.body, clientContext(req)) }, 201); },
     async receivePurchaseOrder(req, res) { ok(res, { purchaseOrder: await purchasing.receivePurchaseOrder(req.auth.user, req.valid.params.id, req.valid.body, clientContext(req)) }); },
 
-    async posSale(req, res) { ok(res, { sale: await purchasing.posSale(req.auth.user, req.valid.body, clientContext(req)) }, 201); },
+    // 201 for a new sale, 200 when the same request id had already produced one (a retry): either way, exactly one sale exists.
+    async posSale(req, res) { const sale = await purchasing.posSale(req.auth.user, req.valid.body, clientContext(req)); ok(res, { sale }, sale.replayed ? 200 : 201); },
+    async listPosSales(req, res) { ok(res, { sales: await purchasing.listPosSales(req.auth.user, req.valid.query) }); },
+    async getPosSale(req, res) { ok(res, { sale: await purchasing.getPosSale(req.auth.user, req.valid.params.id) }); },
+    async getPosSaleByKey(req, res) { ok(res, { sale: await purchasing.getPosSaleByKey(req.auth.user, req.valid.params.key) }); },
   };
 }

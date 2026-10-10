@@ -21,6 +21,11 @@ export function inventoryRoutes({ container, controller }) {
   r.post("/purchase-orders", authed, write, validate({ body: v.createPOBody }), controller.createPurchaseOrder);
   r.post("/purchase-orders/:id/receive", authed, write, validate({ params: v.poIdParams, body: v.receivePOBody }), controller.receivePurchaseOrder);
 
-  r.post("/pos/sale", authed, write, validate({ body: v.posSaleBody }), controller.posSale);
+  // The till is guarded by pos:sell (what the pharmacist role actually holds) — not inventory:adjust, which is a stock-keeper's right.
+  const sell = requirePermission("pos:sell");
+  r.post("/pos/sale", authed, sell, validate({ body: v.posSaleBody }), controller.posSale);
+  r.get("/pos/sales", authed, sell, validate({ query: v.posSalesQuery }), controller.listPosSales);
+  r.get("/pos/sales/by-key/:key", authed, sell, validate({ params: v.posSaleKeyParams }), controller.getPosSaleByKey); // before :id
+  r.get("/pos/sales/:id", authed, sell, validate({ params: v.posSaleIdParams }), controller.getPosSale);
   return r;
 }

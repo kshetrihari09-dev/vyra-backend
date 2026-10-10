@@ -3,11 +3,12 @@ import { after, before, describe, it } from "node:test";
 import { boot, loginAs, makeUser, skipReason } from "./helpers.js";
 
 describe("inventory API (real Postgres)", { skip: skipReason }, () => {
-  let ctx, whAuth, custAuth;
+  let ctx, whAuth, custAuth, cashierAuth;
   before(async () => {
     ctx = await boot();
     whAuth = { Authorization: `Bearer ${(await loginAs(ctx.request, await makeUser(ctx.container, { roles: ["warehouse"] }))).token}` };
     custAuth = { Authorization: `Bearer ${(await loginAs(ctx.request, await makeUser(ctx.container))).token}` };
+    cashierAuth = { Authorization: `Bearer ${(await loginAs(ctx.request, await makeUser(ctx.container, { roles: ["pharmacist"] }))).token}` }; // holds pos:sell
   });
   after(async () => { await ctx?.close(); });
 
@@ -51,10 +52,16 @@ describe("inventory API (real Postgres)", { skip: skipReason }, () => {
   });
 
   it("POS sale deducts stock immediately, no reservation step", async () => {
-    const before = (await ctx.request.get("/api/products/basmati-rice-5kg")).body.data.product;
-    const stockBefore = before.stock?.["store-01"] ?? before.variants?.[0]?.stock?.["store-01"];
-    const res = await ctx.request.post("/api/pos/sale").set(whAuth).send({ branch: "store-01", items: [{ productId: "basmati-rice-5kg", variantId: before.variants?.[0]?.id, qty: 1 }], paymentMethod: "cod" });
+    const variantStock = async () => (await ctx.request.get("/api/products/basmati-rice-5kg")).body.data.product.variants[0];
+    const before = await variantStock();
+    const sale = { branch: "store-01", items: [{ productId: "basmati-rice-5kg", variantId: before.id, qty: 1 }], paymentMethod: "cash", amountReceived: 1000, idempotencyKey: `inventory-suite-${Date.now()}-0123456789` };
+    const res = await ctx.request.post("/api/pos/sale").set(cashierAuth).send(sale);
     assert.equal(res.status, 201);
     assert.ok(res.body.data.sale.number.startsWith("POS-"));
+    assert.equal((await variantStock()).stock["store-01"], before.stock["store-01"] - 1, "stock left the shelf immediately");
+    // The till is guarded by pos:sell. A stock-keeper (inventory:adjust only) and a shopper can't ring up sales.
+    assert.equal((await ctx.request.post("/api/pos/sale").set(whAuth).send({ ...sale, idempotencyKey: `inventory-suite-wh-${Date.now()}-0123456` })).status, 403);
+    assert.equal((await ctx.request.post("/api/pos/sale").set(custAuth).send({ ...sale, idempotencyKey: `inventory-suite-cu-${Date.now()}-0123456` })).status, 403);
   });
+
 });

@@ -13,8 +13,16 @@ export const toPODto = (r, lines = []) => ({
   lines: lines.map((l) => ({ productId: l.product_id, qty: l.qty, purchasePrice: toNumber(l.purchase_price), batch: l.batch_no, expiry: l.expiry_date })),
 });
 
+/** Everything a receipt needs, from the stored sale — so a reprint is identical to the original, whatever has changed since. */
 export const toPosSaleDto = (r, items = []) => ({
-  id: r.id, number: r.number, storeId: r.branch_id, customerName: r.customer_name, paymentMethod: r.payment_method,
-  totals: { subtotal: toNumber(r.subtotal), tax: toNumber(r.tax), total: toNumber(r.total) }, placedAt: r.created_at,
-  items: items.map((it) => ({ productId: it.product_id, variantId: it.variant_id, name: it.name, unitPrice: toNumber(it.unit_price), qty: it.qty, batch: it.batch_no })),
+  id: r.id, number: r.number, storeId: r.branch_id, storeName: r.branch_name ?? null, cashierName: r.cashier_name ?? null,
+  customerName: r.customer_name, paymentMethod: r.payment_method,
+  totals: { subtotal: toNumber(r.subtotal), discount: toNumber(r.discount ?? 0), tax: toNumber(r.tax), total: toNumber(r.total) },
+  discount: r.discount_type ? { type: r.discount_type, value: toNumber(r.discount_value) } : null,
+  payment: { method: r.payment_method, received: r.amount_received == null ? toNumber(r.total) : toNumber(r.amount_received), change: toNumber(r.change_due ?? 0) },
+  placedAt: r.created_at,
+  items: items.map((it) => ({
+    productId: it.product_id, variantId: it.variant_id, name: it.name, unitPrice: toNumber(it.unit_price), qty: it.qty,
+    lineTotal: toNumber(it.line_total), discount: toNumber(it.discount ?? 0), taxPercent: toNumber(it.tax_percent ?? 0), tax: toNumber(it.tax ?? 0), batch: it.batch_no,
+  })),
 });

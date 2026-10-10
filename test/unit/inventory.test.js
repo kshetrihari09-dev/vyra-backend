@@ -105,25 +105,111 @@ describe("purchase orders", () => {
   });
 });
 
+const cashier = { id: "u-cash", name: "Cashier", roles: ["pharmacist"], permissions: ["pos:sell", "inventory:read"] };
+const manager = { id: "u-mgr", name: "Manager", roles: ["admin"], permissions: ["pos:sell", "catalog:price", "reports:read"] };
+const KEY = (n = 1) => `req-${String(n).padStart(16, "0")}`;
+const sale = (over = {}) => ({ branch: "store-01", items: [{ productId: "soap", qty: 3 }], paymentMethod: "cash", amountReceived: 100, idempotencyKey: KEY(), ...over });
+
 describe("POS sale", () => {
   it("deducts stock immediately (no reservation step) and totals the sale with tax", async () => {
     const e = setup();
-    const sale = await e.purchasing.posSale(warehouseActor, { branch: "store-01", items: [{ productId: "soap", qty: 3 }], paymentMethod: "cod" }, ctx);
-    assert.equal(sale.items[0].qty, 3);
+    const s = await e.purchasing.posSale(cashier, sale(), ctx);
+    assert.equal(s.items[0].qty, 3);
     assert.equal(e.db.inventory.get(e.key("store-01", "soap", "")).on_hand, 7);
-    assert.equal(sale.totals.tax, Math.round(15 * 0.05 * 100) / 100); // soap: price 5, tax 5%
+    assert.equal(s.totals.tax, Math.round(15 * 0.05 * 100) / 100); // soap: price 5, tax 5%
+    assert.equal(s.totals.total, 15.75);
   });
 
-  it("refuses a sale beyond what's actually available (accounting for online reservations)", async () => {
+  it("refuses a sale beyond what's actually available (accounting for online reservations) and says how many ARE", async () => {
     const e = setup(); // soap: 10 on hand, 2 reserved → 8 sellable
-    await assert.rejects(e.purchasing.posSale(warehouseActor, { branch: "store-01", items: [{ productId: "soap", qty: 9 }], paymentMethod: "cod" }, ctx), { code: "INSUFFICIENT_STOCK" });
+    await assert.rejects(e.purchasing.posSale(cashier, sale({ items: [{ productId: "soap", qty: 9 }] }), ctx), (err) => err.code === "INSUFFICIENT_STOCK" && /Only 8 units of/.test(err.message) && err.details.available === 8);
   });
 
   it("consumes batches FEFO for a batch-tracked product", async () => {
     const e = setup();
-    await e.purchasing.posSale(warehouseActor, { branch: "store-01", items: [{ productId: "cough-syrup", qty: 4 }], paymentMethod: "cod" }, ctx);
+    await e.purchasing.posSale(cashier, sale({ items: [{ productId: "cough-syrup", qty: 4 }] }), ctx);
     const batches = e.db.batches["cough-syrup"]["store-01"];
     assert.equal(batches.find((b) => b.id === "b-old").qty, 0);
     assert.equal(batches.find((b) => b.id === "b-new").qty, 9);
   });
+
+  it("subtotal − discount + tax = total, and the stored lines add up to the sale", async () => {
+    const e = setup();
+    const s = await e.purchasing.posSale(cashier, sale({ items: [{ productId: "soap", qty: 4 }], discount: { type: "fixed", value: 2 } }), ctx); // 20.00 − 2.00 + 5% of 18.00
+    assert.deepEqual([s.totals.subtotal, s.totals.discount, s.totals.tax, s.totals.total], [20, 2, 0.9, 18.9]);
+    assert.equal(s.items.reduce((a, l) => a + l.lineTotal - l.discount + l.tax, 0).toFixed(2), "18.90");
+  });
+
+  it("cash: records the amount received and the change; short cash is refused and nothing is deducted", async () => {
+    const e = setup();
+    const s = await e.purchasing.posSale(cashier, sale({ amountReceived: 20 }), ctx);
+    assert.deepEqual([s.payment.received, s.payment.change], [20, 4.25]);
+    const before = e.db.inventory.get(e.key("store-01", "soap", "")).on_hand;
+    await assert.rejects(e.purchasing.posSale(cashier, sale({ amountReceived: 5, idempotencyKey: KEY(2) }), ctx), { code: "INSUFFICIENT_PAYMENT" });
+    assert.equal(e.db.inventory.get(e.key("store-01", "soap", "")).on_hand, before);
+  });
+
+  it("card/UPI are paid exactly; the unsupported methods are refused", async () => {
+    const e = setup();
+    const s = await e.purchasing.posSale(cashier, sale({ paymentMethod: "upi", amountReceived: undefined }), ctx);
+    assert.deepEqual([s.payment.received, s.payment.change], [15.75, 0]);
+    for (const bad of ["cod", "netbanking", "credit", "cash_pos"]) await assert.rejects(e.purchasing.posSale(cashier, sale({ paymentMethod: bad, idempotencyKey: KEY(3) }), ctx), { code: "INVALID_PAYMENT_METHOD" });
+  });
+
+  it("a discount can never push the total below zero", async () => {
+    const e = setup();
+    await assert.rejects(e.purchasing.posSale(manager, sale({ discount: { type: "fixed", value: 15.01 } }), ctx), { code: "DISCOUNT_TOO_LARGE" });
+    for (const bad of [{ type: "percent", value: 101 }, { type: "percent", value: 0 }, { type: "percent", value: -5 }, { type: "fixed", value: -1 }, { type: "fixed", value: NaN }]) {
+      await assert.rejects(e.purchasing.posSale(manager, sale({ discount: bad, idempotencyKey: KEY(4) }), ctx), { code: "INVALID_DISCOUNT" }, JSON.stringify(bad));
+    }
+    const free = await e.purchasing.posSale(manager, sale({ discount: { type: "percent", value: 100 }, amountReceived: 0, idempotencyKey: KEY(5) }), ctx);
+    assert.equal(free.totals.total, 0);
+  });
+
+  it("a cashier's discount is capped; a manager (catalog:price) may go higher", async () => {
+    const e = setup();
+    await e.purchasing.posSale(cashier, sale({ discount: { type: "percent", value: 20 }, idempotencyKey: KEY(6) }), ctx);
+    await assert.rejects(e.purchasing.posSale(cashier, sale({ discount: { type: "percent", value: 21 }, idempotencyKey: KEY(7) }), ctx), { code: "DISCOUNT_NOT_ALLOWED" });
+    await e.purchasing.posSale(manager, sale({ discount: { type: "percent", value: 50 }, idempotencyKey: KEY(8) }), ctx);
+  });
+
+  it("the server prices the sale: a stale total from the screen is rejected with the real one", async () => {
+    const e = setup();
+    await assert.rejects(e.purchasing.posSale(cashier, sale({ expectedTotal: 1 }), ctx), (err) => err.code === "PRICE_CHANGED" && err.details.total === 15.75);
+    await e.purchasing.posSale(cashier, sale({ expectedTotal: 15.75, idempotencyKey: KEY(9) }), ctx);
+  });
+
+  it("the same request id twice → ONE sale, ONE stock deduction (the retry gets the original back)", async () => {
+    const e = setup();
+    const a = await e.purchasing.posSale(cashier, sale(), ctx);
+    const b = await e.purchasing.posSale(cashier, sale(), ctx);
+    assert.equal(a.replayed, false); assert.equal(b.replayed, true);
+    assert.equal(b.number, a.number);
+    assert.equal(e.db.posSales.length, 1);
+    assert.equal(e.db.inventory.get(e.key("store-01", "soap", "")).on_hand, 7);
+  });
+
+  it("a request id reused for a DIFFERENT sale is refused, not answered with the old one", async () => {
+    const e = setup();
+    await e.purchasing.posSale(cashier, sale(), ctx);
+    await assert.rejects(e.purchasing.posSale(cashier, sale({ items: [{ productId: "soap", qty: 1 }] }), ctx), { code: "IDEMPOTENCY_KEY_REUSED" });
+  });
+
+  it("the same product on two lines is one line, so stock is checked against the SUM", async () => {
+    const e = setup(); // 8 sellable
+    await assert.rejects(e.purchasing.posSale(cashier, sale({ items: [{ productId: "soap", qty: 5 }, { productId: "soap", qty: 4 }] }), ctx), { code: "INSUFFICIENT_STOCK" });
+    const s = await e.purchasing.posSale(cashier, sale({ items: [{ productId: "soap", qty: 2 }, { productId: "soap", qty: 3 }], idempotencyKey: KEY(10) }), ctx);
+    assert.equal(s.items.length, 1); assert.equal(s.items[0].qty, 5);
+  });
+
+  it("a cashier reads only their own sales; a manager reads all", async () => {
+    const e = setup();
+    const mine = await e.purchasing.posSale(cashier, sale(), ctx);
+    await e.purchasing.posSale(manager, sale({ idempotencyKey: KEY(11) }), ctx);
+    assert.equal((await e.purchasing.listPosSales(cashier)).length, 1);
+    assert.equal((await e.purchasing.listPosSales(manager)).length, 2);
+    await assert.rejects(e.purchasing.getPosSale({ id: "u-other", permissions: ["pos:sell"] }, mine.id), { code: "SALE_NOT_FOUND" });
+    assert.equal((await e.purchasing.getPosSaleByKey(cashier, KEY())).number, mine.number);
+  });
 });
+

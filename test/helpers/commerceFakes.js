@@ -155,9 +155,23 @@ export function createFakeCommerce() {
     async insertPOLine(_d, poId, l) { db.poLines.get(poId).push({ product_id: l.productId, qty: l.qty, purchase_price: l.purchasePrice, batch_no: l.batchNo, expiry_date: l.expiryDate }); },
     async deletePOLines(_d, poId) { db.poLines.set(poId, []); },
     async markReceived(_d, id) { const po = db.purchaseOrders.find((p) => p.id === id); if (po.status !== "ordered") return null; po.status = "received"; po.received_at = new Date(); return po; },
+    async lockIdempotency() {},
+    async getBranch(_d, id) { return { id, name: "Test Branch", is_active: true }; },
     async nextSaleNumber() { return `POS-${1000 + ++db.seq}`; },
-    async insertPosSale(_d, s) { const row = { id: `sale-${++db.seq}`, ...s, created_at: new Date() }; db.posSales.push(row); db.posSaleItems.set(row.id, []); return row; },
-    async insertPosSaleItem(_d, saleId, it) { db.posSaleItems.get(saleId).push(it); },
+    async insertPosSale(_d, s) {
+      const row = {
+        id: `sale-${++db.seq}`, number: s.number, branch_id: s.branchId, branch_name: "Test Branch", cashier_id: s.cashierId, cashier_name: "Cashier", customer_name: s.customerName ?? null,
+        payment_method: s.paymentMethod, subtotal: s.subtotal, discount: s.discount, discount_type: s.discountType, discount_value: s.discountValue, tax: s.tax, total: s.total,
+        amount_received: s.amountReceived, change_due: s.changeDue, idempotency_key: s.idempotencyKey, request_hash: s.requestHash, created_at: new Date(),
+      };
+      db.posSales.push(row); db.posSaleItems.set(row.id, []); return row;
+    },
+    async insertPosSaleItem(_d, saleId, it) {
+      db.posSaleItems.get(saleId).push({ line_no: it.lineNo, product_id: it.productId, variant_id: it.variantId, name: it.name, unit_price: it.unitPrice, qty: it.qty, line_total: it.lineTotal, discount: it.discount, tax_percent: it.taxPercent, tax: it.tax, batch_no: it.batchNo });
+    },
+    async getSale(_d, { id, cashierId, key } = {}) { return db.posSales.find((r) => (id ? r.id === id : r.cashier_id === cashierId && r.idempotency_key === key)) || null; },
+    async saleItems(_d, saleId) { return db.posSaleItems.get(saleId) || []; },
+    async listSales(_d, { cashierId } = {}) { return db.posSales.filter((r) => !cashierId || r.cashier_id === cashierId).reverse(); },
   };
   return { db, key, repos: { products, catalog, inventory, coupons, addresses, orders, wishlist, purchasing, sellers } };
 }
