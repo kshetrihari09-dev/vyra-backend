@@ -15,6 +15,7 @@ export function createInventoryController({ services }) {
 
     // 201 for a new sale, 200 when the same request id had already produced one (a retry): either way, exactly one sale exists.
     async posSale(req, res) { const sale = await purchasing.posSale(req.auth.user, req.valid.body, clientContext(req)); ok(res, { sale }, sale.replayed ? 200 : 201); },
+    async listPosPrescriptions(req, res) { ok(res, { prescriptions: await purchasing.listPosPrescriptions(req.auth.user, req.valid.query) }); },
     async listPosSales(req, res) { ok(res, { sales: await purchasing.listPosSales(req.auth.user, req.valid.query) }); },
     async getPosSale(req, res) { ok(res, { sale: await purchasing.getPosSale(req.auth.user, req.valid.params.id) }); },
     async getPosSaleByKey(req, res) { ok(res, { sale: await purchasing.getPosSaleByKey(req.auth.user, req.valid.params.key) }); },

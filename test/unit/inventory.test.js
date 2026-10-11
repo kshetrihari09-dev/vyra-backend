@@ -106,7 +106,10 @@ describe("purchase orders", () => {
 });
 
 const cashier = { id: "u-cash", name: "Cashier", roles: ["pharmacist"], permissions: ["pos:sell", "inventory:read"] };
+const pharmacist = { id: "u-ph", name: "Pharmacist", roles: ["pharmacist"], permissions: ["pos:sell", "inventory:read", "prescriptions:review", "prescriptions:read_all"] };
 const manager = { id: "u-mgr", name: "Manager", roles: ["admin"], permissions: ["pos:sell", "catalog:price", "reports:read"] };
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const IN_STORE_RX = { source: "in_store", patientName: "Sita Rai", prescriberName: "Dr. A. Sharma", prescriberRegNo: "NMC-1234", issuedOn: todayISO(), verified: true };
 const KEY = (n = 1) => `req-${String(n).padStart(16, "0")}`;
 const sale = (over = {}) => ({ branch: "store-01", items: [{ productId: "soap", qty: 3 }], paymentMethod: "cash", amountReceived: 100, idempotencyKey: KEY(), ...over });
 
@@ -127,7 +130,7 @@ describe("POS sale", () => {
 
   it("consumes batches FEFO for a batch-tracked product", async () => {
     const e = setup();
-    await e.purchasing.posSale(cashier, sale({ items: [{ productId: "cough-syrup", qty: 4 }] }), ctx);
+    await e.purchasing.posSale(pharmacist, sale({ items: [{ productId: "cough-syrup", qty: 4 }], prescription: IN_STORE_RX }), ctx); // cough-syrup is prescription-required
     const batches = e.db.batches["cough-syrup"]["store-01"];
     assert.equal(batches.find((b) => b.id === "b-old").qty, 0);
     assert.equal(batches.find((b) => b.id === "b-new").qty, 9);
@@ -213,3 +216,66 @@ describe("POS sale", () => {
   });
 });
 
+describe("POS sale — prescription-required medicines", () => {
+  const rxSale = (over = {}) => ({ branch: "store-01", items: [{ productId: "cough-syrup", qty: 2 }], paymentMethod: "cash", amountReceived: 100, idempotencyKey: KEY(50), prescription: IN_STORE_RX, ...over });
+
+  it("a sale with an Rx medicine and NO prescription is refused, and nothing is deducted", async () => {
+    const e = setup();
+    await assert.rejects(e.purchasing.posSale(pharmacist, rxSale({ prescription: undefined }), ctx), (err) => err.code === "PRESCRIPTION_REQUIRED" && /Cough Syrup/.test(err.message) && err.details.productIds[0] === "cough-syrup");
+    assert.equal(e.db.posSales.length, 0);
+    assert.equal(e.db.inventory.get(e.key("store-01", "cough-syrup", "")).on_hand, 13);
+  });
+  it("only a pharmacist (prescriptions:review) may dispense it — a plain cashier is refused even WITH paperwork", async () => {
+    const e = setup();
+    await assert.rejects(e.purchasing.posSale(cashier, rxSale(), ctx), (err) => err.code === "PHARMACIST_REQUIRED" && /Cough Syrup/.test(err.message));
+    assert.equal(e.db.posSales.length, 0);
+  });
+  it("a pharmacist with a verified in-store prescription completes it; the prescription is stored with the sale and returned for the receipt", async () => {
+    const e = setup();
+    const s = await e.purchasing.posSale(pharmacist, rxSale(), ctx);
+    assert.equal(s.items[0].prescriptionRequired, true);
+    assert.deepEqual([s.prescription.source, s.prescription.patientName, s.prescription.prescriberName, s.prescription.prescriberRegNo, s.prescription.issuedOn, s.prescription.verifiedBy], ["in_store", "Sita Rai", "Dr. A. Sharma", "NMC-1234", todayISO(), "Pharmacist"]);
+    assert.equal(e.db.salePrescriptions.size, 1);
+    assert.ok(e.audit.entries.some((a) => a.action === "pos_sale.completed" && a.newValue.prescription.source === "in_store"));
+  });
+  it("an unconfirmed, incomplete, future-dated or expired prescription is refused BEFORE stock is touched", async () => {
+    const e = setup();
+    for (const [rx, code] of [[{ ...IN_STORE_RX, verified: false }, "PRESCRIPTION_INVALID"], [{ ...IN_STORE_RX, patientName: "" }, "PRESCRIPTION_INVALID"], [{ ...IN_STORE_RX, issuedOn: "2999-01-01" }, "PRESCRIPTION_INVALID"], [{ ...IN_STORE_RX, issuedOn: "2000-01-01" }, "PRESCRIPTION_EXPIRED"]]) {
+      await assert.rejects(e.purchasing.posSale(pharmacist, rxSale({ prescription: rx, idempotencyKey: KEY(51) }), ctx), { code });
+    }
+    assert.equal(e.db.inventory.get(e.key("store-01", "cough-syrup", "")).on_hand, 13, "no stock moved");
+    assert.equal(e.db.posSales.length, 0);
+  });
+  it("an approved online prescription that covers the medicine is accepted; pending / other-product / unknown ones are not", async () => {
+    const e = setup();
+    const s = await e.purchasing.posSale(pharmacist, rxSale({ prescription: { source: "online", prescriptionId: "rx-ok" } }), ctx);
+    assert.deepEqual([s.prescription.source, s.prescription.prescriptionId], ["online", "rx-ok"]);
+    for (const id of ["rx-pending", "rx-other", "rx-nope"]) await assert.rejects(e.purchasing.posSale(pharmacist, rxSale({ prescription: { source: "online", prescriptionId: id }, idempotencyKey: KEY(52) }), ctx), { code: "PRESCRIPTION_INVALID" }, id);
+  });
+  it("a prescription attached to a sale with NO Rx medicine is rejected (no stray patient data)", async () => {
+    const e = setup();
+    await assert.rejects(e.purchasing.posSale(pharmacist, { branch: "store-01", items: [{ productId: "soap", qty: 1 }], paymentMethod: "cash", amountReceived: 50, idempotencyKey: KEY(53), prescription: IN_STORE_RX }, ctx), { code: "PRESCRIPTION_NOT_NEEDED" });
+  });
+  it("an ordinary sale is untouched: no prescription needed, none stored", async () => {
+    const e = setup();
+    const s = await e.purchasing.posSale(cashier, { branch: "store-01", items: [{ productId: "soap", qty: 1 }], paymentMethod: "cash", amountReceived: 50, idempotencyKey: KEY(54) }, ctx);
+    assert.equal(s.prescription, null); assert.equal(s.items[0].prescriptionRequired, false); assert.equal(e.db.salePrescriptions.size, 0);
+  });
+  it("a mixed cart needs the prescription for the Rx line only, and the other line is sold normally", async () => {
+    const e = setup();
+    const s = await e.purchasing.posSale(pharmacist, rxSale({ items: [{ productId: "soap", qty: 1 }, { productId: "cough-syrup", qty: 1 }] }), ctx);
+    assert.deepEqual(s.items.map((i) => [i.name, i.prescriptionRequired]).sort(), [["Cough Syrup", true], ["Soap", false]].sort());
+  });
+  it("the same request id with a DIFFERENT prescription is a different request (not a replay)", async () => {
+    const e = setup();
+    await e.purchasing.posSale(pharmacist, rxSale({ idempotencyKey: KEY(55) }), ctx);
+    await assert.rejects(e.purchasing.posSale(pharmacist, rxSale({ idempotencyKey: KEY(55), prescription: { ...IN_STORE_RX, patientName: "Someone Else" } }), ctx), { code: "IDEMPOTENCY_KEY_REUSED" });
+    const again = await e.purchasing.posSale(pharmacist, rxSale({ idempotencyKey: KEY(55) }), ctx);
+    assert.equal(again.replayed, true); assert.equal(e.db.posSales.length, 1);
+  });
+  it("the pick-list of approved online prescriptions", async () => {
+    const e = setup();
+    const list = await e.purchasing.listPosPrescriptions(pharmacist, { productIds: ["cough-syrup"] });
+    assert.deepEqual(list.map((r) => r.id), ["rx-ok"]);
+  });
+});

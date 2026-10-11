@@ -219,7 +219,7 @@ describe("POS sale API (real Postgres)", { skip: skipReason }, () => {
   describe("sale numbers", () => {
     // Sales of the SAME product queue on its stock-row lock, which would hide a numbering race. Different products don't, so use many.
     it("30 concurrent sales of 30 DIFFERENT products get 30 distinct, consecutive numbers (the old count(*)+1 handed two tills the same one)", async () => {
-      const ids = (await pool.query("SELECT id FROM products WHERE status='active' AND deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = products.id) ORDER BY id LIMIT 30")).rows.map((r) => r.id);
+      const ids = (await pool.query("SELECT id FROM products WHERE status='active' AND deleted_at IS NULL AND NOT prescription_required AND NOT EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = products.id) ORDER BY id LIMIT 30")).rows.map((r) => r.id);
       assert.ok(ids.length >= 20, `need many products, have ${ids.length}`);
       for (const id of ids) await setStock(id, 50);
       const results = await Promise.all(ids.map((id) => sell(cashier, { items: [{ productId: id, qty: 1 }] })));
@@ -316,6 +316,125 @@ describe("POS sale API (real Postgres)", { skip: skipReason }, () => {
       const mineIds = new Set(mine.body.data.sales.map((s) => s.id));
       assert.ok(theirs.body.data.sales.every((s) => !mineIds.has(s.id)));
       assert.equal((await ctx.request.get("/api/pos/sales").set(auth(customer))).status, 403);
+    });
+  });
+
+  describe("prescription-required medicines (decision D5, now enforced at the till too)", () => {
+    const RX = "amoxicillin-500"; // the seeded prescription-required product
+    const today = () => new Date().toISOString().slice(0, 10);
+    const paper = (over = {}) => ({ source: "in_store", patientName: "Sita Rai", prescriberName: "Dr. A. Sharma", prescriberRegNo: "NMC-1234", issuedOn: today(), verified: true, ...over });
+    const rxSale = (who, body = {}) => sell(who, { items: [{ productId: RX, qty: 2 }], prescription: paper(), ...body });
+    const rxCount = (sql = "SELECT count(*) n FROM pos_sale_prescriptions", a = []) => count(sql, a);
+    // An approved prescription as the app produces it: uploaded by a customer, approved by a pharmacist, covering given products.
+    const approvedRx = async (productIds, { status = "approved", reviewedAt = "now()" } = {}) => {
+      const owner = await makeUser(ctx.container, { roles: ["customer"] });
+      const { rows: [r] } = await pool.query(
+        `INSERT INTO prescriptions (user_id, status, file_key, file_name, mime_type, size_bytes, reviewed_at) VALUES ($1,$2,'k','rx.pdf','application/pdf',10, ${reviewedAt}) RETURNING id`, [owner.user?.id ?? owner.id, status]);
+      for (const pid of productIds) await pool.query("INSERT INTO prescription_items (prescription_id, product_id) VALUES ($1,$2)", [r.id, pid]);
+      return r.id;
+    };
+    before(async () => { await pool.query("UPDATE products SET prescription_required = true WHERE id = $1", [RX]); });
+
+    it("an Rx medicine with NO prescription is refused: nothing sold, nothing deducted", async () => {
+      await setStock(RX, 20); const sales0 = await count("SELECT count(*) n FROM pos_sales");
+      const r = await rxSale(cashier, { prescription: undefined });
+      assert.equal(r.status, 400); assert.equal(r.body.code, "PRESCRIPTION_REQUIRED"); assert.match(r.body.message, /Amoxicillin/i);
+      assert.equal(await onHand(RX), 20); assert.equal(await count("SELECT count(*) n FROM pos_sales"), sales0);
+    });
+    it("a customer and a stock-keeper still can't use the till at all", async () => {
+      assert.equal((await rxSale(customer)).status, 403); assert.equal((await rxSale(warehouse)).status, 403);
+    });
+    it("a pharmacist's verified paper prescription completes the sale; it is stored with the sale, attributed to the pharmacist, and comes back for the receipt", async () => {
+      await setStock(RX, 20);
+      const r = await rxSale(cashier);
+      assert.equal(r.status, 201); const sale = r.body.data.sale;
+      assert.equal(await onHand(RX), 18);
+      assert.deepEqual([sale.prescription.source, sale.prescription.patientName, sale.prescription.prescriberName, sale.prescription.prescriberRegNo, sale.prescription.issuedOn], ["in_store", "Sita Rai", "Dr. A. Sharma", "NMC-1234", today()]);
+      assert.ok(sale.prescription.verifiedBy, "who verified it"); assert.equal(sale.items[0].prescriptionRequired, true);
+      const { rows: [row] } = await pool.query("SELECT sp.*, u.id AS uid FROM pos_sale_prescriptions sp JOIN users u ON u.id = sp.verified_by JOIN pos_sales s ON s.id = sp.sale_id WHERE sp.sale_id = $1 AND s.cashier_id = sp.verified_by", [sale.id]);
+      assert.ok(row, "verified_by is the pharmacist who rang it up");
+      const again = await ctx.request.get(`/api/pos/sales/${sale.id}`).set(auth(cashier));
+      assert.deepEqual(again.body.data.sale.prescription, sale.prescription, "a reprint shows exactly what was recorded");
+    });
+    it("incomplete, unconfirmed, future-dated and expired prescriptions are refused and cost nothing", async () => {
+      await setStock(RX, 20);
+      const cases = [[paper({ verified: false }), 400, "PRESCRIPTION_INVALID"], [paper({ patientName: "" }), 400, "PRESCRIPTION_INVALID"], [paper({ prescriberName: " " }), 400, "PRESCRIPTION_INVALID"],
+        [paper({ issuedOn: "2999-01-01" }), 400, "PRESCRIPTION_INVALID"], [paper({ issuedOn: "2000-01-01" }), 400, "PRESCRIPTION_EXPIRED"], [paper({ issuedOn: "not-a-date" }), 400, "PRESCRIPTION_INVALID"]];
+      for (const [prescription, status, code] of cases) { const r = await rxSale(cashier, { prescription }); assert.equal(r.status, status, JSON.stringify(prescription)); assert.equal(r.body.code, code); }
+      assert.equal(await onHand(RX), 20);
+    });
+    it("an approved ONLINE prescription (from the app) that covers the medicine is accepted, and the pick-list shows it with its use count", async () => {
+      await setStock(RX, 20); const id = await approvedRx([RX]);
+      const list = await ctx.request.get("/api/pos/prescriptions/approved").query({ productIds: RX }).set(auth(cashier));
+      assert.equal(list.status, 200); const mine = list.body.data.prescriptions.find((p) => p.id === id);
+      assert.ok(mine && mine.items.includes(RX) && mine.uses === 0 && mine.customerName);
+      const r = await rxSale(cashier, { prescription: { source: "online", prescriptionId: id } });
+      assert.equal(r.status, 201); assert.deepEqual([r.body.data.sale.prescription.source, r.body.data.sale.prescription.prescriptionId], ["online", id]);
+      assert.ok(r.body.data.sale.prescription.patientName, "the customer's name from the app");
+      const after = await ctx.request.get("/api/pos/prescriptions/approved").query({ productIds: RX }).set(auth(cashier));
+      assert.equal(after.body.data.prescriptions.find((p) => p.id === id).uses, 1, "a repeat dispense is visible");
+    });
+    it("online prescriptions that are pending, rejected, expired, unknown or for a DIFFERENT medicine are refused", async () => {
+      await setStock(RX, 20);
+      const bad = [await approvedRx([RX], { status: "pending", reviewedAt: "NULL" }), await approvedRx([RX], { status: "rejected" }), await approvedRx(["olive-oil-1l"]), await approvedRx([RX], { reviewedAt: "now() - interval '400 days'" })];
+      for (const id of bad) { const r = await rxSale(cashier, { prescription: { source: "online", prescriptionId: id } }); assert.equal(r.status, 400, id); assert.match(r.body.code, /PRESCRIPTION_(INVALID|EXPIRED)/); }
+      assert.equal((await rxSale(cashier, { prescription: { source: "online", prescriptionId: "00000000-0000-4000-8000-000000000000" } })).status, 400);
+      assert.equal(await onHand(RX), 20);
+    });
+    it("the pick-list is for pharmacists: a customer is refused", async () => {
+      assert.equal((await ctx.request.get("/api/pos/prescriptions/approved").query({ productIds: RX }).set(auth(customer))).status, 403);
+      assert.equal((await ctx.request.get("/api/pos/prescriptions/approved").query({ productIds: RX }).set(auth(manager))).status, 200);
+    });
+    it("a prescription sent with a sale that has NO prescription medicine is rejected (no stray patient data kept)", async () => {
+      await setStock("olive-oil-1l", 10); const n0 = await rxCount();
+      const r = await sell(cashier, { items: [{ productId: "olive-oil-1l", qty: 1 }], prescription: paper() });
+      assert.equal(r.status, 400); assert.equal(r.body.code, "PRESCRIPTION_NOT_NEEDED"); assert.equal(await rxCount(), n0);
+    });
+    it("a MIXED cart: the Rx line is covered by the prescription, the ordinary line sells normally", async () => {
+      await setStock(RX, 20); await setStock("olive-oil-1l", 20);
+      const r = await sell(cashier, { items: [{ productId: "olive-oil-1l", qty: 1 }, { productId: RX, qty: 1 }], prescription: paper() });
+      assert.equal(r.status, 201); const flags = Object.fromEntries(r.body.data.sale.items.map((i) => [i.productId, i.prescriptionRequired]));
+      assert.deepEqual(flags, { "olive-oil-1l": false, [RX]: true });
+    });
+    it("ATOMIC: if the prescription record can't be written, the whole sale — stock, items, movements — rolls back", async () => {
+      await setStock(RX, 20);
+      await pool.query(`CREATE OR REPLACE FUNCTION rx_boom() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'simulated rx failure'; END $$ LANGUAGE plpgsql`);
+      await pool.query("CREATE TRIGGER rx_boom_t BEFORE INSERT ON pos_sale_prescriptions FOR EACH ROW EXECUTE FUNCTION rx_boom()");
+      try {
+        const sales0 = await count("SELECT count(*) n FROM pos_sales"); const mv0 = await count("SELECT count(*) n FROM inventory_movements");
+        const r = await rxSale(cashier); assert.ok(r.status >= 500, `status ${r.status}`);
+        assert.equal(await onHand(RX), 20); assert.equal(await count("SELECT count(*) n FROM pos_sales"), sales0); assert.equal(await count("SELECT count(*) n FROM inventory_movements"), mv0);
+      } finally { await pool.query("DROP TRIGGER IF EXISTS rx_boom_t ON pos_sale_prescriptions"); await pool.query("DROP FUNCTION IF EXISTS rx_boom()"); }
+      assert.equal((await rxSale(cashier)).status, 201, "and the till still works afterwards");
+    });
+    it("10 identical Rx requests at the same instant → ONE sale, ONE prescription record, stock deducted once", async () => {
+      await setStock(RX, 20); const body = { items: [{ productId: RX, qty: 3 }], prescription: paper(), idempotencyKey: key() };
+      const results = await Promise.all(Array.from({ length: 10 }, () => sell(cashier, body)));
+      assert.equal(results.filter((r) => r.status === 201).length, 1); assert.equal(results.filter((r) => r.status === 200).length, 9);
+      assert.equal(await rxCount("SELECT count(*) n FROM pos_sale_prescriptions WHERE sale_id = $1", [results[0].body.data.sale.id]), 1);
+      assert.equal(await onHand(RX), 17);
+    });
+    it("the same request id with a DIFFERENT patient is refused, not answered with the first sale", async () => {
+      await setStock(RX, 20); const id = key(); const items = [{ productId: RX, qty: 1 }];
+      assert.equal((await sell(cashier, { items, prescription: paper(), idempotencyKey: id })).status, 201);
+      const r = await sell(cashier, { items, prescription: paper({ patientName: "Someone Else" }), idempotencyKey: id });
+      assert.equal(r.status, 409); assert.equal(r.body.code, "IDEMPOTENCY_KEY_REUSED");
+    });
+    it("the database itself refuses an in-store record with no patient, or an online record with no prescription", async () => {
+      await setStock(RX, 20); const sale = (await rxSale(cashier)).body.data.sale;
+      const { rows: [u] } = await pool.query("SELECT id FROM users LIMIT 1");
+      await assert.rejects(pool.query("INSERT INTO pos_sale_prescriptions (sale_id, source, verified_by) VALUES ($1,'in_store',$2)", [sale.id, u.id]), /check/i);
+      await assert.rejects(pool.query("INSERT INTO pos_sale_prescriptions (sale_id, source, verified_by) VALUES ($1,'online',$2)", [sale.id, u.id]), /check|duplicate/i);
+    });
+    it("the issue date is stored and returned as the same calendar day (no timezone drift)", async () => {
+      await setStock(RX, 20); const d = new Date(Date.now() - 20 * 86_400_000).toISOString().slice(0, 10);
+      const r = await rxSale(cashier, { prescription: paper({ issuedOn: d }) });
+      assert.equal(r.body.data.sale.prescription.issuedOn, d);
+      assert.equal((await ctx.request.get(`/api/pos/sales/${r.body.data.sale.id}`).set(auth(cashier))).body.data.sale.prescription.issuedOn, d);
+    });
+    it("a till sale of an ordinary product is completely unaffected (no prescription stored)", async () => {
+      await setStock("olive-oil-1l", 10); const r = await sell(cashier, { items: [{ productId: "olive-oil-1l", qty: 1 }] });
+      assert.equal(r.status, 201); assert.equal(r.body.data.sale.prescription, null);
     });
   });
 });

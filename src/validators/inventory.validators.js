@@ -28,6 +28,10 @@ export const poIdParams = z.object({ id: z.string().uuid() });
 const receiveLine = z.object({ productId: idSlug, qty: z.number().int().min(1), purchasePrice: z.number().min(0), batch: text(40).min(1), expiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD") });
 export const receivePOBody = z.object({ lines: z.array(receiveLine).min(1).max(100) });
 
+const posPrescription = z.discriminatedUnion("source", [
+  z.object({ source: z.literal("in_store"), patientName: text(100), prescriberName: text(100), prescriberRegNo: text(40).nullable().optional(), issuedOn: z.string().max(10), notes: text(300).nullable().optional(), verified: z.boolean() }),
+  z.object({ source: z.literal("online"), prescriptionId: z.string().uuid(), verified: z.boolean().optional() }),
+]);
 const saleLine = z.object({ productId: idSlug, variantId: z.string().max(30).nullable().optional(), qty: z.number().int().min(1).max(MAX_LINE_QTY), batch: text(40).nullable().optional() });
 const money = z.number().finite().min(0).max(MAX_AMOUNT);
 export const posSaleBody = z.object({
@@ -39,8 +43,11 @@ export const posSaleBody = z.object({
   amountReceived: money.nullable().optional(),
   expectedTotal: money.nullable().optional(),
   /** A fresh random id per sale attempt, reused ONLY for retries of that same attempt. The server turns it into "at most one sale". */
+  /** Required (server-enforced) when the sale contains a prescription-required medicine; rejected when it does not. */
+  prescription: posPrescription.nullable().optional(),
   idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/, "Missing or malformed request id"),
 });
+export const posPrescriptionsQuery = z.object({ productIds: z.string().min(1).max(2000).transform((s) => [...new Set(s.split(",").map((x) => x.trim()).filter(Boolean))].slice(0, 50)) });
 export const posSalesQuery = z.object({ branch: idSlug.optional(), limit: z.coerce.number().int().min(1).max(100).default(30) });
 export const posSaleIdParams = z.object({ id: z.string().uuid() });
 export const posSaleKeyParams = z.object({ key: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/) });

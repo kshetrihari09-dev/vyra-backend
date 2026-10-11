@@ -60,10 +60,28 @@ export function createPurchasingRepository() {
     },
     async insertPosSaleItem(db, saleId, it) {
       await db.query(
-        `INSERT INTO pos_sale_items (sale_id, line_no, product_id, variant_id, name, unit_price, qty, line_total, discount, tax_percent, tax, batch_no)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-        [saleId, it.lineNo, it.productId, it.variantId ?? null, it.name, it.unitPrice, it.qty, it.lineTotal, it.discount, it.taxPercent, it.tax, it.batchNo ?? null],
+        `INSERT INTO pos_sale_items (sale_id, line_no, product_id, variant_id, name, unit_price, qty, line_total, discount, tax_percent, tax, batch_no, prescription_required)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [saleId, it.lineNo, it.productId, it.variantId ?? null, it.name, it.unitPrice, it.qty, it.lineTotal, it.discount, it.taxPercent, it.tax, it.batchNo ?? null, !!it.prescriptionRequired],
       );
+    },
+    async insertSalePrescription(db, saleId, rx) {
+      await db.query(
+        `INSERT INTO pos_sale_prescriptions (sale_id, source, prescription_id, patient_name, prescriber_name, prescriber_reg_no, issued_on, notes, verified_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [saleId, rx.source, rx.prescriptionId ?? null, rx.patientName ?? null, rx.prescriberName ?? null, rx.prescriberRegNo ?? null, rx.issuedOn ?? null, rx.notes ?? null, rx.verifiedBy],
+      );
+    },
+    /** The prescription behind a sale, with the names a receipt / register needs (the pharmacist, and the patient for an online prescription). */
+    async getSalePrescription(db, saleId) {
+      const { rows } = await db.query(
+        `SELECT sp.*, to_char(sp.issued_on, 'YYYY-MM-DD') AS issued_on_text, v.full_name AS verified_by_name, c.full_name AS online_patient_name
+           FROM pos_sale_prescriptions sp
+           JOIN users v ON v.id = sp.verified_by
+           LEFT JOIN prescriptions p ON p.id = sp.prescription_id
+           LEFT JOIN users c ON c.id = p.user_id
+          WHERE sp.sale_id = $1`, [saleId]);
+      return rows[0] || null;
     },
     /**
      * Next sale number: one counter row per day, bumped inside the sale's own transaction — two tills can't be handed the same number and a

@@ -24,7 +24,12 @@ export function createFakeCommerce() {
     orders: [], orderItems: new Map(), orderHistory: new Map(),
     suppliers: [{ id: "sup-1", name: "MedSource", contact: "Anita", phone: "+1 555 0410", email: "a@x.com", terms: "Net 30" }],
     purchaseOrders: [], poLines: new Map(),
-    posSales: [], posSaleItems: new Map(),
+    posSales: [], posSaleItems: new Map(), salePrescriptions: new Map(),
+    prescriptions: [
+      { id: "rx-ok", status: "approved", reviewed_at: new Date().toISOString(), created_at: new Date().toISOString(), items: ["cough-syrup"] },
+      { id: "rx-pending", status: "pending", reviewed_at: null, created_at: new Date().toISOString(), items: ["cough-syrup"] },
+      { id: "rx-other", status: "approved", reviewed_at: new Date().toISOString(), created_at: new Date().toISOString(), items: ["soap"] },
+    ],
     seq: 0, orderSeq: 0,
   };
   const key = (b, p, v) => `${b}|${p}|${v || ""}`;
@@ -167,13 +172,22 @@ export function createFakeCommerce() {
       db.posSales.push(row); db.posSaleItems.set(row.id, []); return row;
     },
     async insertPosSaleItem(_d, saleId, it) {
-      db.posSaleItems.get(saleId).push({ line_no: it.lineNo, product_id: it.productId, variant_id: it.variantId, name: it.name, unit_price: it.unitPrice, qty: it.qty, line_total: it.lineTotal, discount: it.discount, tax_percent: it.taxPercent, tax: it.tax, batch_no: it.batchNo });
+      db.posSaleItems.get(saleId).push({ prescription_required: !!it.prescriptionRequired, line_no: it.lineNo, product_id: it.productId, variant_id: it.variantId, name: it.name, unit_price: it.unitPrice, qty: it.qty, line_total: it.lineTotal, discount: it.discount, tax_percent: it.taxPercent, tax: it.tax, batch_no: it.batchNo });
     },
+    async insertSalePrescription(_d, saleId, rx) { db.salePrescriptions.set(saleId, { sale_id: saleId, source: rx.source, prescription_id: rx.prescriptionId ?? null, patient_name: rx.patientName ?? null, prescriber_name: rx.prescriberName ?? null, prescriber_reg_no: rx.prescriberRegNo ?? null, issued_on_text: rx.issuedOn ?? null, notes: rx.notes ?? null, verified_by: rx.verifiedBy, verified_by_name: "Pharmacist" }); },
+    async getSalePrescription(_d, saleId) { return db.salePrescriptions.get(saleId) || null; },
     async getSale(_d, { id, cashierId, key } = {}) { return db.posSales.find((r) => (id ? r.id === id : r.cashier_id === cashierId && r.idempotency_key === key)) || null; },
     async saleItems(_d, saleId) { return db.posSaleItems.get(saleId) || []; },
     async listSales(_d, { cashierId } = {}) { return db.posSales.filter((r) => !cashierId || r.cashier_id === cashierId).reverse(); },
   };
-  return { db, key, repos: { products, catalog, inventory, coupons, addresses, orders, wishlist, purchasing, sellers } };
+  // Online prescriptions (uploaded + approved through the app): just enough of the real repository for the till to attach one.
+  const prescriptions = {
+    async getById(_d, id) { return db.prescriptions.find((r) => r.id === id) || null; },
+    async items(_d, id) { return db.prescriptions.find((r) => r.id === id)?.items ?? []; },
+    async itemsFor(_d, ids) { return new Map(db.prescriptions.filter((r) => ids.includes(r.id)).map((r) => [r.id, r.items])); },
+    async listApprovedCovering(_d, productIds) { return db.prescriptions.filter((r) => r.status === "approved" && r.items.some((i) => productIds.includes(i))).map((r) => ({ ...r, customer_name: "Customer", uses: 0 })); },
+  };
+  return { db, key, repos: { products, catalog, inventory, coupons, addresses, orders, wishlist, purchasing, sellers, prescriptions } };
 }
 
 export const customer = { id: "u-cust", name: "Cust", roles: ["customer"], permissions: [] };

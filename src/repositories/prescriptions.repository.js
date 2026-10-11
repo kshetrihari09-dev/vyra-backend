@@ -41,9 +41,28 @@ export function createPrescriptionsRepository() {
     async listAll(db, { status } = {}) {
       const where = status ? "WHERE p.status = $1" : "";
       return (await db.query(
-        `SELECT p.*, u.name AS customer_name FROM prescriptions p JOIN users u ON u.id = p.user_id ${where} ORDER BY p.created_at DESC`,
+        `SELECT p.*, u.full_name AS customer_name FROM prescriptions p JOIN users u ON u.id = p.user_id ${where} ORDER BY p.created_at DESC`,
         status ? [status] : [],
       )).rows;
+    },
+
+    /**
+     * Approved prescriptions (anyone's) covering ANY of these products — what a pharmacist at the till picks from when the customer shows the one
+     * they uploaded in the app. `uses` = how many orders / till sales already dispensed against it, so a repeat is visible rather than silent.
+     */
+    async listApprovedCovering(db, productIds, { limit = 25 } = {}) {
+      if (!productIds.length) return [];
+      const { rows } = await db.query(
+        `SELECT p.*, u.full_name AS customer_name,
+                (SELECT count(*) FROM order_prescriptions op WHERE op.prescription_id = p.id)
+              + (SELECT count(*) FROM pos_sale_prescriptions sp WHERE sp.prescription_id = p.id) AS uses
+           FROM prescriptions p JOIN users u ON u.id = p.user_id
+          WHERE p.status = 'approved'
+            AND EXISTS (SELECT 1 FROM prescription_items pi WHERE pi.prescription_id = p.id AND pi.product_id = ANY($1::text[]))
+          ORDER BY p.reviewed_at DESC NULLS LAST LIMIT $2`,
+        [productIds, limit],
+      );
+      return rows;
     },
 
     /** Approved prescriptions this user owns that cover ALL of the given product ids, in one query. */

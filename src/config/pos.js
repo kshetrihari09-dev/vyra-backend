@@ -9,3 +9,6 @@ export const MAX_CASHIER_DISCOUNT_PERCENT = 20;
 /** Largest single line quantity / cash tendered the till accepts (typo guard, not a business limit). */
 export const MAX_LINE_QTY = 10_000;
 export const MAX_AMOUNT = 10_000_000;
+
+/** How old a prescription may be and still be dispensed against (by its issue date). Regulations differ by country and drug class: tune here. */
+export const RX_MAX_AGE_DAYS = 180;

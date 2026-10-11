@@ -24,6 +24,8 @@ export function inventoryRoutes({ container, controller }) {
   // The till is guarded by pos:sell (what the pharmacist role actually holds) — not inventory:adjust, which is a stock-keeper's right.
   const sell = requirePermission("pos:sell");
   r.post("/pos/sale", authed, sell, validate({ body: v.posSaleBody }), controller.posSale);
+  // Approved online prescriptions a pharmacist can attach to a till sale. Verifying a prescription is a pharmacist's act (prescriptions:review).
+  r.get("/pos/prescriptions/approved", authed, requirePermission("prescriptions:review"), validate({ query: v.posPrescriptionsQuery }), controller.listPosPrescriptions);
   r.get("/pos/sales", authed, sell, validate({ query: v.posSalesQuery }), controller.listPosSales);
   r.get("/pos/sales/by-key/:key", authed, sell, validate({ params: v.posSaleKeyParams }), controller.getPosSaleByKey); // before :id
   r.get("/pos/sales/:id", authed, sell, validate({ params: v.posSaleIdParams }), controller.getPosSale);

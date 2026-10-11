@@ -3,6 +3,7 @@ import { toPODto, toPosSaleDto, toSupplierDto } from "../models/inventory.model.
 import { badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
 import { MAX_CASHIER_DISCOUNT_PERCENT, POS_PAYMENT_METHODS } from "../config/pos.js";
 import { priceSale, settle, toCents } from "../domain/posTotals.js";
+import { validateInStore, validateOnline } from "../domain/posPrescription.js";
 
 const can = (actor, perm) => !!actor?.permissions?.includes(perm);
 
@@ -19,13 +20,16 @@ function mergeItems(items) {
 
 /** What the sale IS (not how it was typed): same content → same hash, so an honest retry matches and a different sale under a reused key is caught. */
 function hashRequest(b) {
-  const canon = { branch: b.branch, items: b.items.map((i) => [i.productId, i.variantId ?? null, i.qty]), method: b.paymentMethod, discount: b.discount ? [b.discount.type, Number(b.discount.value)] : null, received: b.amountReceived ?? null, customer: b.customerName ?? null };
+  const canon = { branch: b.branch, items: b.items.map((i) => [i.productId, i.variantId ?? null, i.qty]), method: b.paymentMethod, discount: b.discount ? [b.discount.type, Number(b.discount.value)] : null, received: b.amountReceived ?? null, customer: b.customerName ?? null,
+    rx: b.prescription ? [b.prescription.source, b.prescription.prescriptionId ?? null, b.prescription.patientName ?? null, b.prescription.prescriberName ?? null, b.prescription.prescriberRegNo ?? null, b.prescription.issuedOn ?? null, b.prescription.notes ?? null] : null };
   return createHash("sha256").update(JSON.stringify(canon)).digest("hex");
 }
 
 /** Suppliers, purchase orders (create → receive), and POS sales. All need inventory:adjust (PO/POS are how stock enters or leaves outside the order flow). */
 export function createPurchasingService({ pool, withTx, repos, audit }) {
-  const { purchasing, products, inventory } = repos;
+  const { purchasing, products, inventory, prescriptions } = repos;
+  /** A stored sale as the API returns it: lines + the prescription record (when there is one). */
+  const loadSale = async (db, row) => toPosSaleDto(row, await purchasing.saleItems(db, row.id), await purchasing.getSalePrescription(db, row.id));
 
   return {
     async listSuppliers() { return (await purchasing.listSuppliers(pool)).map(toSupplierDto); },
@@ -86,7 +90,7 @@ export function createPurchasingService({ pool, withTx, repos, audit }) {
       const replay = async (db, prior) => {
         // Same key, different sale → a client bug (or an attack on someone else's key space): refuse rather than hand back the wrong sale.
         if (prior.request_hash && prior.request_hash !== requestHash) throw conflict("IDEMPOTENCY_KEY_REUSED", "This request id was already used for a different sale.");
-        return { ...toPosSaleDto(prior, await purchasing.saleItems(db, prior.id)), replayed: true };
+        return { ...(await loadSale(db, prior)), replayed: true };
       };
 
       const attempt = () => withTx(async (db) => {
@@ -116,7 +120,7 @@ export function createPurchasingService({ pool, withTx, repos, audit }) {
             throw badRequest("VARIANT_REQUIRED", `Choose a size/variant of ${product.name}.`);
           }
           const unitPrice = Number(variant ? (variant.sale_price ?? variant.price) : (product.sale_price ?? product.price));
-          lines.push({ productId: item.productId, variantId: item.variantId ?? null, name: variant ? `${product.name} — ${variant.label}` : product.name, unitPrice, qty: item.qty, taxPercent: Number(product.tax_percent), batchNo: item.batch ?? null });
+          lines.push({ productId: item.productId, variantId: item.variantId ?? null, name: variant ? `${product.name} — ${variant.label}` : product.name, unitPrice, qty: item.qty, taxPercent: Number(product.tax_percent), batchNo: item.batch ?? null, prescriptionRequired: !!product.prescription_required });
         }
 
         const priced = priceSale(lines, body.discount);
@@ -128,6 +132,26 @@ export function createPurchasingService({ pool, withTx, repos, audit }) {
           throw conflict("PRICE_CHANGED", "Prices changed since this cart was built. Review the updated total.", { subtotal: priced.subtotal, discount: priced.discount, tax: priced.tax, total: priced.total });
         }
         const { received, change } = settle({ method: body.paymentMethod, total: priced.total, amountReceived: body.amountReceived });
+
+        // Prescription-required medicines (decision D5, which the storefront already enforces for online orders). Decided HERE — before any stock is
+        // locked — so a missing or invalid prescription costs nothing. Only a pharmacist may verify one, and the record is written with the sale.
+        const rxLines = lines.filter((l) => l.prescriptionRequired);
+        let rxRecord = null;
+        if (rxLines.length) {
+          const rxProducts = [...new Map(rxLines.map((l) => [l.productId, { productId: l.productId, name: l.name }])).values()];
+          const ids = rxProducts.map((p) => p.productId);
+          if (!can(actor, "prescriptions:review")) throw forbidden("PHARMACIST_REQUIRED", `A pharmacist must verify the prescription for: ${rxProducts.map((p) => p.name).join(", ")}.`, { productIds: ids });
+          if (!body.prescription) throw badRequest("PRESCRIPTION_REQUIRED", `A prescription is required for: ${rxProducts.map((p) => p.name).join(", ")}.`, { productIds: ids });
+          if (body.prescription.source === "online") {
+            const rx = await prescriptions.getById(db, body.prescription.prescriptionId);
+            validateOnline(rx, rx ? await prescriptions.items(db, rx.id) : [], rxProducts);
+            rxRecord = { source: "online", prescriptionId: rx.id, verifiedBy: actor.id };
+          } else {
+            rxRecord = { source: "in_store", ...validateInStore(body.prescription), verifiedBy: actor.id };
+          }
+        } else if (body.prescription) {
+          throw badRequest("PRESCRIPTION_NOT_NEEDED", "This sale has no prescription-only medicines, so no prescription should be attached.");
+        }
 
         // PHASE 2 — stock. `merged` is sorted by (product, variant), so every concurrent sale takes its row locks in the same order: two tills
         // ringing up the same products in opposite order can never deadlock. Availability is re-checked UNDER the lock, so two sales racing for
@@ -154,11 +178,12 @@ export function createPurchasingService({ pool, withTx, repos, audit }) {
         for (const [i, l] of lines.entries()) {
           await purchasing.insertPosSaleItem(db, sale.id, { ...l, lineNo: lineNo++, lineTotal: priced.lines[i].gross, discount: priced.lines[i].discount, tax: priced.lines[i].tax });
         }
+        if (rxRecord) await purchasing.insertSalePrescription(db, sale.id, rxRecord);
         for (const m of pendingMovements) await inventory.recordMovement(db, { ...m, reason: `POS sale · ${number}`, refType: "pos_sale", refId: sale.id, actorId: actor.id });
-        await audit.log({ actor, action: "pos_sale.completed", entityType: "pos_sale", entityId: sale.id, newValue: { number, total: priced.total, discount: priced.discount, items: lines.length, method: body.paymentMethod } }, ctx, db);
+        await audit.log({ actor, action: "pos_sale.completed", entityType: "pos_sale", entityId: sale.id, newValue: { number, total: priced.total, discount: priced.discount, items: lines.length, method: body.paymentMethod, prescription: rxRecord ? { source: rxRecord.source, prescriptionId: rxRecord.prescriptionId ?? null } : null } }, ctx, db);
 
         const stored = await purchasing.getSale(db, { id: sale.id });
-        return { ...toPosSaleDto(stored, await purchasing.saleItems(db, sale.id)), replayed: false };
+        return { ...(await loadSale(db, stored)), replayed: false };
       });
 
       try {
@@ -178,13 +203,19 @@ export function createPurchasingService({ pool, withTx, repos, audit }) {
     async getPosSale(actor, id) {
       const row = await purchasing.getSale(pool, { id });
       if (!row || (row.cashier_id !== actor.id && !can(actor, "reports:read"))) throw notFound("SALE_NOT_FOUND", "Sale not found");
-      return toPosSaleDto(row, await purchasing.saleItems(pool, row.id));
+      return loadSale(pool, row);
     },
     /** Did a request with this key already produce a sale? Lets a till whose connection dropped find out safely instead of guessing. */
     async getPosSaleByKey(actor, key) {
       const row = await purchasing.getSale(pool, { cashierId: actor.id, key });
       if (!row) throw notFound("SALE_NOT_FOUND", "No sale was recorded for that request");
-      return toPosSaleDto(row, await purchasing.saleItems(pool, row.id));
+      return loadSale(pool, row);
+    },
+    /** The pharmacist's pick-list when a customer shows the prescription they uploaded in the app: approved ones covering these medicines. */
+    async listPosPrescriptions(actor, { productIds }) {
+      const rows = await prescriptions.listApprovedCovering(pool, productIds);
+      const items = await prescriptions.itemsFor(pool, rows.map((r) => r.id));
+      return rows.map((r) => ({ id: r.id, customerName: r.customer_name, approvedAt: r.reviewed_at, uploadedAt: r.created_at, items: items.get(r.id) ?? [], uses: Number(r.uses) }));
     },
     async listPosSales(actor, { branch, limit } = {}) {
       const rows = await purchasing.listSales(pool, { cashierId: can(actor, "reports:read") ? undefined : actor.id, branchId: branch, limit: limit ?? 30 });

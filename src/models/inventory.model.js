@@ -14,14 +14,22 @@ export const toPODto = (r, lines = []) => ({
 });
 
 /** Everything a receipt needs, from the stored sale — so a reprint is identical to the original, whatever has changed since. */
-export const toPosSaleDto = (r, items = []) => ({
+export const toPosSaleDto = (r, items = [], rx = null) => ({
   id: r.id, number: r.number, storeId: r.branch_id, storeName: r.branch_name ?? null, cashierName: r.cashier_name ?? null,
   customerName: r.customer_name, paymentMethod: r.payment_method,
   totals: { subtotal: toNumber(r.subtotal), discount: toNumber(r.discount ?? 0), tax: toNumber(r.tax), total: toNumber(r.total) },
   discount: r.discount_type ? { type: r.discount_type, value: toNumber(r.discount_value) } : null,
   payment: { method: r.payment_method, received: r.amount_received == null ? toNumber(r.total) : toNumber(r.amount_received), change: toNumber(r.change_due ?? 0) },
   placedAt: r.created_at,
+  /** Present only when the sale contained prescription-required medicines: who checked what, so the printed receipt and the dispensing record agree. */
+  prescription: rx ? {
+    source: rx.source, prescriptionId: rx.prescription_id ?? null,
+    patientName: rx.source === "online" ? (rx.online_patient_name ?? null) : rx.patient_name, prescriberName: rx.prescriber_name ?? null, prescriberRegNo: rx.prescriber_reg_no ?? null,
+    issuedOn: rx.issued_on_text ?? (typeof rx.issued_on === "string" ? rx.issued_on.slice(0, 10) : null), // text from SQL: a JS Date here could shift the day across timezones
+    notes: rx.notes ?? null, verifiedBy: rx.verified_by_name ?? null,
+  } : null,
   items: items.map((it) => ({
+    prescriptionRequired: !!it.prescription_required,
     productId: it.product_id, variantId: it.variant_id, name: it.name, unitPrice: toNumber(it.unit_price), qty: it.qty,
     lineTotal: toNumber(it.line_total), discount: toNumber(it.discount ?? 0), taxPercent: toNumber(it.tax_percent ?? 0), tax: toNumber(it.tax ?? 0), batch: it.batch_no,
   })),
