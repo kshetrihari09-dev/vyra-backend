@@ -23,6 +23,7 @@ export const PERMISSIONS = {
   "payments:manage": "Confirm manual payments, and approve or reject refunds",
   "prescriptions:read_all": "View every prescription",
   "prescriptions:review": "Approve or reject prescriptions",
+  "support:pharmacist": "Answer customers in the pharmacist inbox and set pharmacist availability",
   "customers:read": "View customer records",
   "sellers:read_all": "View every seller and shop application",
   "sellers:approve": "Approve, reject or suspend sellers and shop applications",
@@ -53,8 +54,8 @@ export const ROLES = {
   customer: { label: "Customer", description: "Shops on the storefront", permissions: [] },
   admin: { label: "Administrator", description: "Full access (the frontend's Owner and Administrator)", permissions: ALL },
   pharmacist: {
-    label: "Pharmacist", description: "Reviews prescriptions, sees orders and batch stock",
-    permissions: ["prescriptions:read_all", "prescriptions:review", "orders:read_all", "inventory:read", "pos:sell"],
+    label: "Pharmacist", description: "Reviews prescriptions, answers customers in the pharmacist inbox, sees orders and batch stock",
+    permissions: ["prescriptions:read_all", "prescriptions:review", "support:pharmacist", "orders:read_all", "inventory:read", "pos:sell"],
   },
   seller: {
     label: "Seller", description: "Marketplace shop owner (which shop is decided by the database, never by the client)",

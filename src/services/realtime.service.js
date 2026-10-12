@@ -18,7 +18,7 @@ import pg from "pg";
 const CHANNEL = "vyra_tracking";
 const REFRESH_MS = 30_000;
 
-export function createRealtime({ config, logger, channel = CHANNEL, maxPerUser = 6, refreshMs = REFRESH_MS, ClientImpl = pg.Client }) {
+export function createRealtime({ config, logger, channel = CHANNEL, eventName = "tracking", maxPerUser = 6, refreshMs = REFRESH_MS, ClientImpl = pg.Client }) {
   const subs = new Map();      // orderId -> Set<sub>
   const perUser = new Map();   // userId -> open stream count
   let listener = null;
@@ -39,7 +39,7 @@ export function createRealtime({ config, logger, channel = CHANNEL, maxPerUser =
         sub.dirty = false;
         const payload = await sub.snapshot();
         if (!sub.open) break;
-        sub.send("tracking", payload);
+        sub.send(eventName, payload);
         if (payload?.final) { sub.end(); break; }
       } while (sub.dirty && sub.open);
     } catch (err) {

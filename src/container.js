@@ -22,6 +22,8 @@ import { createAuthService } from "./services/auth.service.js";
 import { createCatalogService } from "./services/catalog.service.js";
 import { createNotificationsService } from "./services/notifications.service.js";
 import { createNotificationsRepository } from "./repositories/notifications.repository.js";
+import { createSupportRepository } from "./repositories/support.repository.js";
+import { createSupportService } from "./services/support.service.js";
 import { createRetentionJob } from "./jobs/retention.js";
 import { createScheduler } from "./jobs/scheduler.js";
 import { createNotifier } from "./services/notifier.js";
@@ -88,6 +90,7 @@ export function createContainer(config, overrides = {}) {
     sellerPayouts: createSellerPayoutsRepository(),
     delivery: createDeliveryRepository(),
     notifications: createNotificationsRepository(),
+    support: createSupportRepository(),
   };
   const tokens = createTokenService({ secret: config.auth.jwtSecret, ttlSeconds: config.auth.accessTtlSeconds });
   const notifier = createNotifier({ driver: config.notify.driver, logger, webhookUrl: config.notify.webhookUrl, webhookSecret: config.notify.webhookSecret, timeoutMs: config.notify.timeoutMs });
@@ -124,12 +127,16 @@ export function createContainer(config, overrides = {}) {
   const deliveryCodes = createDeliveryCodes(config.security.dataEncryptionKey);
   // Realtime tracking (SSE over LISTEN/NOTIFY). Its listener connects lazily on the first stream, so tests/scripts that build a container open nothing.
   services.realtime = createRealtime({ config, logger });
+  // Pharmacist chat streams reuse the same LISTEN/NOTIFY hub on their own channel (so a chat message never wakes tracking streams).
+  services.supportRealtime = createRealtime({ config, logger, channel: "vyra_support", eventName: "support", maxPerUser: 4 });
   const routing = createRoutingService({ accessToken: config.maps.accessToken, logger });
   services.orders = createOrdersService({ pool, withTx, repos, phoneTrust, pricing, audit, prescriptions: services.prescriptions, payments: services.payments, codes: deliveryCodes, notifications, realtime: services.realtime });
   // The single rider-authorisation service: used by the /rider/* middleware AND by every delivery service call.
   services.riderAccess = createRiderAccess({ repos });
   const provisionRider = createRiderProvisioning({ repos, audit }); // one way to make a rider: admin-add and application-approval both use it
   services.delivery = createDeliveryService({ pool, withTx, repos, audit, payments: services.payments, codes: deliveryCodes, notifications, riderAccess: services.riderAccess, provisionRider, realtime: services.realtime, routing });
+
+  services.support = createSupportService({ pool, withTx, repos, notifier, notifications, realtime: services.supportRealtime, audit, config, logger });
 
   const encryption = createEncryption(config.security.dataEncryptionKey);
   services.sellers = createSellersService({ pool, withTx, repos, encryption, audit });

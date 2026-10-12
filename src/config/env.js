@@ -51,6 +51,18 @@ export function loadConfig(env = process.env) {
   }
   if (isProd && notifyDriver === "console") errors.push("NOTIFY_DRIVER=console would log OTPs and reset tokens; not allowed in production");
 
+  // ---- Pharmacist support contact details. Optional: a missing value DISABLES that contact method in the UI (never a demo fallback).
+  const phoneRaw = (env.PHARMACY_PHONE || "").trim();
+  const phoneDigits = phoneRaw.replace(/[\s().-]/g, "");
+  if (phoneRaw && !/^\+?[0-9]{7,15}$/.test(phoneDigits)) errors.push("PHARMACY_PHONE must be a phone number such as +9779812345678 (7-15 digits, optional leading +)");
+  const emailOrNull = (name) => {
+    const v = (env[name] || "").trim().toLowerCase();
+    if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) errors.push(`${name} must be an email address`);
+    return v || null;
+  };
+  const pharmacyEmail = emailOrNull("PHARMACY_SUPPORT_EMAIL");
+  const generalEmail = emailOrNull("GENERAL_SUPPORT_EMAIL");
+
   const otpDevCode = env.OTP_DEV_CODE || "";
   if (otpDevCode && !/^\d{4}$/.test(otpDevCode)) errors.push("OTP_DEV_CODE must be exactly 4 digits");
   if (isProd && otpDevCode) errors.push("OTP_DEV_CODE must not be set in production");
@@ -91,6 +103,12 @@ export function loadConfig(env = process.env) {
       name: "vyra_rt",
       secure: env.COOKIE_SECURE === undefined || env.COOKIE_SECURE === "" ? isProd : bool(env.COOKIE_SECURE),
       domain: env.COOKIE_DOMAIN || undefined,
+    },
+    support: {
+      pharmacyPhone: phoneRaw ? { display: phoneRaw, tel: phoneDigits } : null,
+      pharmacyEmail, generalEmail,
+      // A pharmacist is "online" for this long after the last heartbeat from their console (it beats every minute while open).
+      presenceTtlSeconds: int("PHARMACIST_PRESENCE_TTL_SECONDS", 180, { min: 30 }),
     },
     notify: { driver: notifyDriver, webhookUrl, webhookSecret, timeoutMs: int("NOTIFY_TIMEOUT_MS", 8000, { min: 500 }) },
     /* Background jobs (outbox worker, retention). Off in tests; safe to run in several processes (rows are claimed with SKIP LOCKED). */

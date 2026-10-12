@@ -77,6 +77,17 @@ export const TEMPLATES = {
     title: () => "Prescription not accepted",
     message: (d) => `Your prescription couldn't be accepted${d.reason ? `: ${d.reason}` : "."} You can upload a clearer copy.`,
   },
+  // ---- pharmacist support (content-free on purpose: no message text, so no health details end up in the outbox or a provider's logs)
+  "support.new_message": {
+    kind: "support",
+    title: () => "New pharmacist question",
+    message: () => "A customer is waiting in the pharmacist inbox.",
+  },
+  "support.reply": {
+    kind: "support", email: true,
+    title: () => "A pharmacist replied",
+    message: () => "A pharmacist replied to your question. Open Vyra and go to Help & Support to read it.",
+  },
   // ---- payments
   "refund.completed": {
     kind: "payment", email: true,
@@ -138,4 +149,4 @@ export const TEMPLATES = {
 };
 
 /** Types that carry a deep-link target the UI understands. */
-export const LINK_KEYS = ["orderId", "prescriptionId", "applicationId"];
+export const LINK_KEYS = ["orderId", "prescriptionId", "applicationId", "conversationId"];

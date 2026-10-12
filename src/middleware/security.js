@@ -45,4 +45,9 @@ export const createLimiters = (config) => ({
   passwordReset: limiter(config, { windowMs: 60 * 60_000, limit: 10 }),
   refresh: limiter(config, { windowMs: 60_000, limit: 60 }),
   addressWrite: limiter(config, { windowMs: 60 * 60_000, limit: 40 }),
+  // Support limits are per signed-in user (they sit after `authenticate`), so one shared network can't lock out others.
+  supportSend: limiter(config, { windowMs: 60_000, limit: 30, keyGenerator: (req) => `u:${req.auth?.user?.id ?? "anon"}` }),
+  supportForm: limiter(config, { windowMs: 60 * 60_000, limit: 10, keyGenerator: (req) => `u:${req.auth?.user?.id ?? "anon"}` }),
+  supportRead: limiter(config, { windowMs: 60_000, limit: 120, keyGenerator: (req) => `u:${req.auth?.user?.id ?? "anon"}` }),
+  supportStaff: limiter(config, { windowMs: 60_000, limit: 120, keyGenerator: (req) => `u:${req.auth?.user?.id ?? "anon"}` }),
 });

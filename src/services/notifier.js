@@ -34,15 +34,19 @@ export function createNotifier({ driver, logger, webhookUrl, webhookSecret, time
     };
     return {
       sendSms: ({ to, text }) => post({ channel: "sms", to, text }),
-      sendEmail: ({ to, subject, text }) => post({ channel: "email", to, subject, text }),
+      // `replyTo` is passed to the gateway as an extra field; a gateway that ignores it still sends the message.
+      sendEmail: ({ to, subject, text, replyTo }) => post({ channel: "email", to, subject, text, ...(replyTo ? { replyTo } : {}) }),
+      driver, deliversExternally: true,
     };
   }
   if (driver === "console") {
     return {
       async sendSms({ to, text }) { logger.info("[notify:console] sms", { to, text }); },
       async sendEmail({ to, subject, text }) { logger.info("[notify:console] email", { to, subject, text }); },
+      // Logging is NOT delivery: callers that must not claim success on a log line check this flag.
+      driver, deliversExternally: false,
     };
   }
   const refuse = async () => { throw unavailable("NOTIFIER_UNAVAILABLE", "Messaging is not configured on this server yet."); };
-  return { sendSms: refuse, sendEmail: refuse };
+  return { sendSms: refuse, sendEmail: refuse, driver, deliversExternally: false };
 }

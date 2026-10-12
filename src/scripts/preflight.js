@@ -24,6 +24,10 @@ export async function runPreflight({ config, pool, migrationsDir = MIGRATIONS_DI
   if (config.notify.driver === "console") add(config.isProd ? FAIL : WARN, "messaging", "NOTIFY_DRIVER=console logs OTPs and reset links");
   else if (config.notify.driver === "disabled") add(WARN, "messaging", "NOTIFY_DRIVER=disabled: registration OTPs and password resets cannot be delivered — nobody new can sign up");
   else add(OK, "messaging", `webhook → ${new URL(config.notify.webhookUrl).host}`);
+  // Pharmacist support: each contact method reports exactly why it is off, instead of the UI quietly failing.
+  const realEmail = config.notify.driver === "webhook";
+  add(config.support.pharmacyPhone ? OK : WARN, "pharmacist phone", config.support.pharmacyPhone ? "PHARMACY_PHONE set" : "PHARMACY_PHONE not set — the Call button uses the customer's store line (non-demo stores only in production) or is disabled");
+  add(config.support.pharmacyEmail && realEmail ? OK : WARN, "pharmacist email", !config.support.pharmacyEmail ? "PHARMACY_SUPPORT_EMAIL not set — the in-app email form is disabled" : !realEmail ? "NOTIFY_DRIVER is not webhook — the in-app email form is disabled (console logging is not delivery)" : `emails go to ${config.support.pharmacyEmail}`);
   add(config.jobs.enabled ? OK : WARN, "background jobs", config.jobs.enabled ? "enabled (outbox worker + retention)" : "JOBS_ENABLED is off: no email/SMS will be sent and old data won't be purged");
   add(config.payments.manualWebhookSecret ? OK : WARN, "payment webhook secret", config.payments.manualWebhookSecret ? "set" : "not set");
   const storageOk = config.storage.bucket && config.storage.accessKey && config.storage.secretKey;
