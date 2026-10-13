@@ -79,6 +79,8 @@ function buildFilters(f) {
   return { where: where.join(" AND "), values, push, tier };
 }
 
+// The shop's real name, so a customer sees who actually sells the product (never a guess from brand).
+const SELLER_NAME = "(SELECT s.name FROM sellers s WHERE s.id = p.seller_id) AS seller_name";
 const FROM = "FROM products p JOIN brands b ON b.id = p.brand_id JOIN categories c ON c.id = p.category_id";
 
 export function createProductsRepository() {
@@ -94,7 +96,7 @@ export function createProductsRepository() {
 
       const limit = push(f.pageSize);
       const offset = push((f.page - 1) * f.pageSize);
-      const { rows } = await db.query(`SELECT p.* ${FROM} WHERE ${where} ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}`, values);
+      const { rows } = await db.query(`SELECT p.*, ${SELLER_NAME} ${FROM} WHERE ${where} ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}`, values);
       return { rows, total };
     },
 
@@ -111,7 +113,7 @@ export function createProductsRepository() {
     },
 
     async getById(db, id, { forUpdate = false } = {}) {
-      const { rows } = await db.query(`SELECT * FROM products WHERE id = $1 AND deleted_at IS NULL${forUpdate ? " FOR UPDATE" : ""}`, [id]);
+      const { rows } = await db.query(`SELECT p.*, ${SELLER_NAME} FROM products p WHERE p.id = $1 AND p.deleted_at IS NULL${forUpdate ? " FOR UPDATE OF p" : ""}`, [id]);
       return rows[0] || null;
     },
 

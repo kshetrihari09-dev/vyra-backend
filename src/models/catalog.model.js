@@ -34,7 +34,7 @@ export function toProductDto(r, hydrated = {}) {
     tags: r.tags ?? [], art: r.art ?? null, attributes: r.attributes ?? {},
     version: r.version,
   };
-  if (r.seller_id) dto.sellerId = r.seller_id;
+  if (r.seller_id) { dto.sellerId = r.seller_id; if (r.seller_name) dto.sellerName = r.seller_name; }
   if (r.composition) dto.composition = r.composition;
   if (r.usage_instructions) dto.usage = r.usage_instructions;
   if (r.side_effects) dto.sideEffects = r.side_effects;
