@@ -23,6 +23,8 @@ import { createCatalogService } from "./services/catalog.service.js";
 import { createNotificationsService } from "./services/notifications.service.js";
 import { createNotificationsRepository } from "./repositories/notifications.repository.js";
 import { createSupportRepository } from "./repositories/support.repository.js";
+import { createCallsRepository } from "./repositories/calls.repository.js";
+import { createCallsService } from "./services/calls.service.js";
 import { createSupportService } from "./services/support.service.js";
 import { createRetentionJob } from "./jobs/retention.js";
 import { createScheduler } from "./jobs/scheduler.js";
@@ -91,6 +93,7 @@ export function createContainer(config, overrides = {}) {
     delivery: createDeliveryRepository(),
     notifications: createNotificationsRepository(),
     support: createSupportRepository(),
+    calls: createCallsRepository(),
   };
   const tokens = createTokenService({ secret: config.auth.jwtSecret, ttlSeconds: config.auth.accessTtlSeconds });
   const notifier = createNotifier({ driver: config.notify.driver, logger, webhookUrl: config.notify.webhookUrl, webhookSecret: config.notify.webhookSecret, timeoutMs: config.notify.timeoutMs });
@@ -136,6 +139,10 @@ export function createContainer(config, overrides = {}) {
   const provisionRider = createRiderProvisioning({ repos, audit }); // one way to make a rider: admin-add and application-approval both use it
   services.delivery = createDeliveryService({ pool, withTx, repos, audit, payments: services.payments, codes: deliveryCodes, notifications, riderAccess: services.riderAccess, provisionRider, realtime: services.realtime, routing });
 
+  // Vyra Call signaling reuses the same LISTEN/NOTIFY hub on its own channel, keyed per user ("u:<id>").
+  services.callsRealtime = createRealtime({ config, logger, channel: "vyra_call", eventName: "calls", maxPerUser: 3 });
+  services.calls = createCallsService({ pool, withTx, repos, realtime: services.callsRealtime, config, logger });
+
   services.support = createSupportService({ pool, withTx, repos, notifier, notifications, realtime: services.supportRealtime, audit, config, logger });
 
   const encryption = createEncryption(config.security.dataEncryptionKey);
@@ -149,6 +156,7 @@ export function createContainer(config, overrides = {}) {
     logger,
     jobs: [
       { name: "outbox", everyMs: 10_000, run: () => notifications.processOutbox() },
+      { name: "calls", everyMs: 5_000, run: () => services.calls.expireStale() },
       { name: "retention", everyMs: 6 * 60 * 60_000, runOnStart: true, run: () => createRetentionJob({ pool, logger }).run() },
     ],
   });

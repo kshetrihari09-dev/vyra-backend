@@ -63,6 +63,24 @@ export function loadConfig(env = process.env) {
   const pharmacyEmail = emailOrNull("PHARMACY_SUPPORT_EMAIL");
   const generalEmail = emailOrNull("GENERAL_SUPPORT_EMAIL");
 
+  // ---- Vyra Call (WebRTC voice calls, customer <-> Vyra Shop). STUN is public; TURN uses time-limited credentials derived
+  // from CALLS_TURN_SECRET (coturn `use-auth-secret`), so no long-lived TURN password ever reaches a browser.
+  const urlList = (name, schemes) => {
+    const list = (env[name] || "").split(",").map((x) => x.trim()).filter(Boolean);
+    for (const u of list) if (!new RegExp(`^(${schemes.join("|")}):[^\\s]+$`).test(u)) errors.push(`${name} entries must start with ${schemes.join(": or ")}: (got "${u}")`);
+    return list;
+  };
+  const stunUrls = urlList("CALLS_STUN_URLS", ["stun", "stuns"]);
+  const turnUrls = urlList("CALLS_TURN_URLS", ["turn", "turns"]);
+  const turnSecret = env.CALLS_TURN_SECRET || "";
+  if (turnUrls.length && turnSecret.length < 32) errors.push("CALLS_TURN_SECRET must be at least 32 characters when CALLS_TURN_URLS is set");
+  if (turnSecret && !turnUrls.length) errors.push("CALLS_TURN_SECRET is set but CALLS_TURN_URLS is empty");
+  const callsAllowStunOnly = bool(env.CALLS_ALLOW_STUN_ONLY, false);
+  // Cross-network audio is unreliable without a relay, so in production calling stays OFF (and says so) until TURN is configured.
+  const callsRequested = bool(env.CALLS_ENABLED, true);
+  const callsDisabledReason = !callsRequested ? "disabled_by_config"
+    : (isProd && !turnUrls.length && !callsAllowStunOnly) ? "turn_not_configured" : null;
+
   const otpDevCode = env.OTP_DEV_CODE || "";
   if (otpDevCode && !/^\d{4}$/.test(otpDevCode)) errors.push("OTP_DEV_CODE must be exactly 4 digits");
   if (isProd && otpDevCode) errors.push("OTP_DEV_CODE must not be set in production");
@@ -109,6 +127,18 @@ export function loadConfig(env = process.env) {
       pharmacyEmail, generalEmail,
       // A pharmacist is "online" for this long after the last heartbeat from their console (it beats every minute while open).
       presenceTtlSeconds: int("PHARMACIST_PRESENCE_TTL_SECONDS", 180, { min: 30 }),
+    },
+    calls: {
+      enabled: callsDisabledReason === null,
+      disabledReason: callsDisabledReason,
+      ringSeconds: int("CALLS_RING_SECONDS", 45, { min: 15 }),            // how long a shop's phone "rings" before the call is marked missed
+      connectSeconds: int("CALLS_CONNECT_SECONDS", 45, { min: 15 }),      // accepted -> audio connected, else the call fails
+      maxMinutes: int("CALLS_MAX_MINUTES", 60, { min: 1 }),               // hard cap on one call
+      peerTimeoutSeconds: int("CALLS_PEER_TIMEOUT_SECONDS", 45, { min: 20 }), // no liveness ping from a side for this long ends the call
+      shopPresenceTtlSeconds: int("CALLS_SHOP_PRESENCE_TTL_SECONDS", 60, { min: 30 }),
+      stunUrls: stunUrls.length ? stunUrls : (isProd ? [] : ["stun:stun.l.google.com:19302"]),
+      turnUrls, turnSecret, turnTtlSeconds: int("CALLS_TURN_TTL_SECONDS", 3600, { min: 300 }),
+      allowStunOnly: callsAllowStunOnly,
     },
     notify: { driver: notifyDriver, webhookUrl, webhookSecret, timeoutMs: int("NOTIFY_TIMEOUT_MS", 8000, { min: 500 }) },
     /* Background jobs (outbox worker, retention). Off in tests; safe to run in several processes (rows are claimed with SKIP LOCKED). */
