@@ -3,12 +3,12 @@ import { unavailable } from "../utils/errors.js";
 
 /**
  * Delivery channel abstraction for OTPs, reset links and outbox messages. Drivers: console (dev only — logs the
- * message), disabled (refuses), webhook (signed POST to your SMS/email gateway).
+ * message), disabled (refuses), webhook (signed POST to your SMS/email gateway), brevo (Brevo's REST API directly).
  *
  *   sendSms({ to, text })
  *   sendEmail({ to, subject, text })
  */
-export function createNotifier({ driver, logger, webhookUrl, webhookSecret, timeoutMs = 8000, fetchImpl = globalThis.fetch, clock = () => Date.now() }) {
+export function createNotifier({ driver, logger, webhookUrl, webhookSecret, brevo, timeoutMs = 8000, fetchImpl = globalThis.fetch, clock = () => Date.now() }) {
   if (driver === "webhook") {
     /**
      * POSTs {channel, to, subject?, text} as JSON to the gateway. The body is signed so the gateway can trust it:
@@ -36,6 +36,39 @@ export function createNotifier({ driver, logger, webhookUrl, webhookSecret, time
       sendSms: ({ to, text }) => post({ channel: "sms", to, text }),
       // `replyTo` is passed to the gateway as an extra field; a gateway that ignores it still sends the message.
       sendEmail: ({ to, subject, text, replyTo }) => post({ channel: "email", to, subject, text, ...(replyTo ? { replyTo } : {}) }),
+      driver, deliversExternally: true,
+    };
+  }
+  if (driver === "brevo") {
+    /**
+     * Brevo transactional email (POST /v3/smtp/email) and transactional SMS (POST /v3/transactionalSMS/send), authenticated with
+     * the `api-key` header. Brevo wants SMS recipients as digits WITH the country code and no "+": a 10-digit national number
+     * (how Vyra stores Nepal mobiles, e.g. 9812345678) gets the configured country code (default 977) in front.
+     * Non-2xx or a timeout throws so the outbox worker retries; the error text never contains the key, the number or the message.
+     */
+    const call = async (path, payload) => {
+      let res;
+      try {
+        res = await fetchImpl(`https://api.brevo.com/v3${path}`, {
+          method: "POST",
+          headers: { "api-key": brevo.apiKey, "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify(payload), signal: AbortSignal.timeout(timeoutMs), redirect: "error",
+        });
+      } catch (err) {
+        throw new Error(err?.name === "TimeoutError" ? "Brevo timed out" : "Brevo unreachable");
+      }
+      if (!res.ok) throw new Error(`Brevo responded ${res.status}`);
+    };
+    const smsRecipient = (to) => {
+      const d = String(to ?? "").replace(/\D/g, "");
+      return d.length <= 10 ? `${brevo.countryCode}${d.replace(/^0+/, "")}` : d;
+    };
+    return {
+      sendSms: ({ to, text }) => call("/transactionalSMS/send", { sender: brevo.smsSender, recipient: smsRecipient(to), content: text, type: "transactional" }),
+      sendEmail: ({ to, subject, text, replyTo }) => call("/smtp/email", {
+        sender: { name: brevo.senderName, email: brevo.senderEmail }, to: [{ email: to }], subject, textContent: text,
+        ...(replyTo ? { replyTo: { email: replyTo } } : {}),
+      }),
       driver, deliversExternally: true,
     };
   }

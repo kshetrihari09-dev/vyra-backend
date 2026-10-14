@@ -96,7 +96,7 @@ export function createContainer(config, overrides = {}) {
     calls: createCallsRepository(),
   };
   const tokens = createTokenService({ secret: config.auth.jwtSecret, ttlSeconds: config.auth.accessTtlSeconds });
-  const notifier = createNotifier({ driver: config.notify.driver, logger, webhookUrl: config.notify.webhookUrl, webhookSecret: config.notify.webhookSecret, timeoutMs: config.notify.timeoutMs });
+  const notifier = createNotifier({ driver: config.notify.driver, logger, webhookUrl: config.notify.webhookUrl, webhookSecret: config.notify.webhookSecret, brevo: config.notify.brevo, timeoutMs: config.notify.timeoutMs });
   const audit = createAuditService({ repo: repos.audit, pool });
   const phoneTrust = createPhoneTrust({ repos });
 

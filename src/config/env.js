@@ -38,7 +38,7 @@ export function loadConfig(env = process.env) {
   if (isProd && corsOrigins.includes("*")) errors.push("CORS_ORIGIN must not be * (credentials are used)");
 
   const notifyDriver = env.NOTIFY_DRIVER || (isProd ? "disabled" : "console");
-  if (!["console", "disabled", "webhook"].includes(notifyDriver)) errors.push("NOTIFY_DRIVER must be console, disabled or webhook");
+  if (!["console", "disabled", "webhook", "brevo"].includes(notifyDriver)) errors.push("NOTIFY_DRIVER must be console, disabled, webhook or brevo");
   // "webhook" hands each SMS/email to YOUR gateway as a signed HTTP POST (see services/notifier.js) — the provider-agnostic
   // way to reach a real SMS/email service without this codebase depending on any one vendor's SDK.
   const webhookUrl = env.NOTIFY_WEBHOOK_URL || "";
@@ -48,6 +48,18 @@ export function loadConfig(env = process.env) {
     else if (!/^https?:\/\//.test(webhookUrl)) errors.push("NOTIFY_WEBHOOK_URL must be an http(s) URL");
     else if (isProd && !webhookUrl.startsWith("https://")) errors.push("NOTIFY_WEBHOOK_URL must be https in production (messages contain OTPs and reset links)");
     if (webhookSecret.length < 32) errors.push("NOTIFY_WEBHOOK_SECRET must be at least 32 characters when NOTIFY_DRIVER=webhook");
+  }
+  // "brevo" sends straight through Brevo's REST API (transactional email + transactional SMS) — no gateway to host.
+  const brevoApiKey = (env.BREVO_API_KEY || "").trim();
+  const brevoSenderEmail = (env.BREVO_SENDER_EMAIL || "").trim().toLowerCase();
+  const brevoSenderName = (env.BREVO_SENDER_NAME || "Vyra").trim();
+  const brevoSmsSender = (env.BREVO_SMS_SENDER || "Vyra").trim();
+  const brevoCountryCode = (env.BREVO_SMS_COUNTRY_CODE || "977").replace(/\D/g, "");
+  if (notifyDriver === "brevo") {
+    if (brevoApiKey.length < 20) errors.push("BREVO_API_KEY is required when NOTIFY_DRIVER=brevo (Brevo > SMTP & API > API keys)");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(brevoSenderEmail)) errors.push("BREVO_SENDER_EMAIL must be an email address verified as a sender in Brevo");
+    if (!/^([A-Za-z0-9]{1,11}|[0-9]{5,15})$/.test(brevoSmsSender)) errors.push("BREVO_SMS_SENDER must be 1-11 letters/digits (no spaces) or a phone number");
+    if (!/^[0-9]{1,4}$/.test(brevoCountryCode)) errors.push("BREVO_SMS_COUNTRY_CODE must be digits such as 977");
   }
   if (isProd && notifyDriver === "console") errors.push("NOTIFY_DRIVER=console would log OTPs and reset tokens; not allowed in production");
 
@@ -140,7 +152,7 @@ export function loadConfig(env = process.env) {
       turnUrls, turnSecret, turnTtlSeconds: int("CALLS_TURN_TTL_SECONDS", 3600, { min: 300 }),
       allowStunOnly: callsAllowStunOnly,
     },
-    notify: { driver: notifyDriver, webhookUrl, webhookSecret, timeoutMs: int("NOTIFY_TIMEOUT_MS", 8000, { min: 500 }) },
+    notify: { driver: notifyDriver, webhookUrl, webhookSecret, brevo: { apiKey: brevoApiKey, senderEmail: brevoSenderEmail, senderName: brevoSenderName, smsSender: brevoSmsSender, countryCode: brevoCountryCode }, timeoutMs: int("NOTIFY_TIMEOUT_MS", 8000, { min: 500 }) },
     /* Background jobs (outbox worker, retention). Off in tests; safe to run in several processes (rows are claimed with SKIP LOCKED). */
     jobs: { enabled: bool(env.JOBS_ENABLED, nodeEnv !== "test") },
     /* Rate limiting can only be switched off outside production (tests / local debugging). */
