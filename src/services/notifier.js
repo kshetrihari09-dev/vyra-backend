@@ -46,7 +46,12 @@ export function createNotifier({ driver, logger, webhookUrl, webhookSecret, brev
      * (how Vyra stores Nepal mobiles, e.g. 9812345678) gets the configured country code (default 977) in front.
      * Non-2xx or a timeout throws so the outbox worker retries; the error text never contains the key, the number or the message.
      */
-    const call = async (path, payload) => {
+    const fail = (channel, reason, detail = {}) => {
+      // The operator needs Brevo's own explanation (bad key, no SMS credits, unverified sender…); the customer just needs to know to retry.
+      logger?.error?.("[notify:brevo] send failed", { channel, reason, ...detail });
+      return unavailable("NOTIFIER_FAILED", "We couldn't send the message right now. Please try again in a few minutes.");
+    };
+    const call = async (channel, path, payload) => {
       let res;
       try {
         res = await fetchImpl(`https://api.brevo.com/v3${path}`, {
@@ -55,17 +60,20 @@ export function createNotifier({ driver, logger, webhookUrl, webhookSecret, brev
           body: JSON.stringify(payload), signal: AbortSignal.timeout(timeoutMs), redirect: "error",
         });
       } catch (err) {
-        throw new Error(err?.name === "TimeoutError" ? "Brevo timed out" : "Brevo unreachable");
+        throw fail(channel, err?.name === "TimeoutError" ? "Brevo timed out" : "Brevo unreachable");
       }
-      if (!res.ok) throw new Error(`Brevo responded ${res.status}`);
+      if (!res.ok) {
+        const body = await res.json?.().catch(() => null);
+        throw fail(channel, `Brevo responded ${res.status}`, { status: res.status, brevoCode: body?.code, brevoMessage: body?.message });
+      }
     };
     const smsRecipient = (to) => {
       const d = String(to ?? "").replace(/\D/g, "");
       return d.length <= 10 ? `${brevo.countryCode}${d.replace(/^0+/, "")}` : d;
     };
     return {
-      sendSms: ({ to, text }) => call("/transactionalSMS/send", { sender: brevo.smsSender, recipient: smsRecipient(to), content: text, type: "transactional" }),
-      sendEmail: ({ to, subject, text, replyTo }) => call("/smtp/email", {
+      sendSms: ({ to, text }) => call("sms", "/transactionalSMS/send", { sender: brevo.smsSender, recipient: smsRecipient(to), content: text, type: "transactional" }),
+      sendEmail: ({ to, subject, text, replyTo }) => call("email", "/smtp/email", {
         sender: { name: brevo.senderName, email: brevo.senderEmail }, to: [{ email: to }], subject, textContent: text,
         ...(replyTo ? { replyTo: { email: replyTo } } : {}),
       }),

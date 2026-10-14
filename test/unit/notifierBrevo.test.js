@@ -28,11 +28,18 @@ describe("Brevo notifier", () => {
     assert.equal(calls[0].url, "https://api.brevo.com/v3/smtp/email");
     assert.deepEqual(calls[0].body, { sender: { name: "Vyra", email: "no-reply@vyra.example" }, to: [{ email: "a@b.com" }], subject: "Hi", textContent: "Body", replyTo: { email: "c@d.com" } });
   });
-  it("throws on a non-2xx or network failure, and never leaks the key, number or message in the error", async () => {
-    const bad = make({ ok: false, status: 402 });
-    await assert.rejects(() => bad.n.sendSms({ to: "9812345678", text: "secret-otp-999" }), (e) => { assert.match(e.message, /Brevo responded 402/); assert.equal(/xkeysib|9812345678|secret-otp/.test(e.message), false); return true; });
-    const down = make(Object.assign(new Error("boom"), { name: "TimeoutError" }));
-    await assert.rejects(() => down.n.sendEmail({ to: "a@b.com", subject: "s", text: "t" }), /Brevo timed out/);
+  it("turns a Brevo failure into a clean 503 for the customer and logs Brevo's reason for the operator — never the key, number or message", async () => {
+    const logs = [];
+    const fetchImpl = async () => ({ ok: false, status: 402, json: async () => ({ code: "not_enough_credits", message: "Not enough credits" }) });
+    const n = createNotifier({ driver: "brevo", logger: { error: (m, d) => logs.push([m, d]) }, brevo, fetchImpl });
+    await assert.rejects(() => n.sendSms({ to: "9812345678", text: "secret-otp-999" }), (e) => {
+      assert.equal(e.status, 503); assert.equal(e.code, "NOTIFIER_FAILED");
+      assert.equal(/xkeysib|9812345678|secret-otp|Brevo/.test(e.message), false); return true;
+    });
+    assert.equal(logs[0][1].brevoCode, "not_enough_credits"); assert.equal(logs[0][1].status, 402);
+    assert.equal(/xkeysib|9812345678|secret-otp/.test(JSON.stringify(logs)), false);
+    const down = createNotifier({ driver: "brevo", logger: { error() {} }, brevo, fetchImpl: async () => { throw Object.assign(new Error("boom"), { name: "TimeoutError" }); } });
+    await assert.rejects(() => down.sendEmail({ to: "a@b.com", subject: "s", text: "t" }), (e) => e.code === "NOTIFIER_FAILED");
   });
 });
 
