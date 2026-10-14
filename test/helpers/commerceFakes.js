@@ -10,7 +10,7 @@ export function createFakeCommerce() {
       { id: "cough-syrup", name: "Cough Syrup", category_id: "health", brand_id: "b1", price: 8, sale_price: null, tax_percent: 0, moq: 1, max_qty: 5, status: "active", prescription_required: true, seller_id: "novatech" },
       { id: "bandage", name: "Bandage", category_id: "health", brand_id: "b1", price: 3, sale_price: null, tax_percent: 0, moq: 1, max_qty: 10, status: "active", prescription_required: false, seller_id: "medico" },
     ],
-    sellers: [{ id: "novatech", owner_user_id: "u-nova", status: "active" }, { id: "medico", owner_user_id: "u-medico", status: "active" }],
+    sellers: [{ id: "novatech", name: "NovaTech", owner_user_id: "u-nova", status: "active" }, { id: "medico", name: "Medico", owner_user_id: "u-medico", status: "active" }],
     variants: {},
     inventory: new Map(), // key `${branch}|${product}|${variant||''}` -> { id, on_hand, reserved }
     batches: { "cough-syrup": { "store-01": [{ id: "b-old", qty: 3, expiry_date: "2026-10-01", is_legacy_opening: false }, { id: "b-new", qty: 10, expiry_date: "2026-12-01", is_legacy_opening: false }] } },
@@ -137,6 +137,7 @@ export function createFakeCommerce() {
   };
   const sellers = {
     async getByOwner(_d, userId) { return db.sellers.find((x) => x.owner_user_id === userId) ?? null; },
+    async settingsByIds(_d, ids) { return db.sellers.filter((x) => ids.includes(x.id)).map((x) => ({ id: x.id, name: x.name, owner_user_id: x.owner_user_id ?? null, settings: x.settings ?? {} })); },
   };
   const wishlist = {
     async has(_d, userId, productId) { return db._wish?.some((w) => w.userId === userId && w.productId === productId) ?? false; },

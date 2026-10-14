@@ -30,6 +30,7 @@ export function createApp(container) {
   app.use("/api/rider-applications", express.json({ limit: "30mb", ...rawBodyCapture }));
   // Product photos: up to 5 browser-downscaled JPEGs as data URLs — bigger than the 100kb default, so this one path gets 8mb.
   app.use(/^\/api\/products\/[^/]+\/images$/, express.json({ limit: "8mb", ...rawBodyCapture }));
+  app.use(/^\/api\/sellers\/[^/]+\/settings$/, express.json({ limit: "2mb", ...rawBodyCapture })); // logo + banner travel as small base64 images
   app.use(express.json({ limit: "100kb", ...rawBodyCapture }));
   app.use(cookieParser());
   app.use("/api", limiters.global);

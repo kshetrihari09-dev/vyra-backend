@@ -1,3 +1,4 @@
+import { paymentRejection, wantsNotification } from "../domain/sellerSettings.js";
 import { toOrderDto } from "../models/commerce.model.js";
 import { outOfRangeMessage } from "../domain/deliveryPricing.js";
 import { noRealtime } from "./realtime.service.js";
@@ -97,8 +98,13 @@ export function createOrdersService({ pool, withTx, repos, phoneTrust = null, pr
         if (!branch) throw badRequest("BRANCH_NOT_FOUND", "That store isn't available");
 
         const { lines, issues, rowIds } = await pricing.priceLines(db, body.items, { branchId, manage: false, lock: true });
-        const blocking = issues.filter((i) => ["not_found", "unavailable", "limit", "moq", "out_of_stock", "insufficient_stock"].includes(i.type));
+        const blocking = issues.filter((i) => ["not_found", "unavailable", "limit", "moq", "out_of_stock", "insufficient_stock", "seller_min_order"].includes(i.type));
         if (blocking.length) throw conflict("CART_INVALID", blocking[0].message, blocking);
+
+        // Each shop in the cart decides which payment methods it accepts.
+        const cartShops = await repos.sellers.settingsByIds(db, [...new Set(lines.map((l) => l.sellerId).filter(Boolean))]);
+        const refused = paymentRejection(cartShops, body.paymentMethod);
+        if (refused) throw badRequest("PAYMENT_METHOD_NOT_ACCEPTED", refused.message, [{ path: "body.paymentMethod", message: refused.message }]);
 
         // Decision D5 (now enforced — closes the Phase 3 known gap): every prescription-required line must be
         // covered by one of the customer's own *approved* prescriptions, or the order is refused outright.
@@ -133,6 +139,12 @@ export function createOrdersService({ pool, withTx, repos, phoneTrust = null, pr
 
         await audit.log({ actor, action: "order.placed", entityType: "order", entityId: order.id, newValue: { number, total: totals.total, items: lines.length } }, ctx, db);
         await notifications.emit(db, { userId: actor.id, type: "order.placed", data: { orderId: order.id, number, total: totals.total } });
+        // Tell each shop whose items are in this order (unless it switched "New orders" off in its settings).
+        for (const shop of cartShops) {
+          if (shop.owner_user_id && shop.owner_user_id !== actor.id && wantsNotification(shop.settings, "newOrder")) {
+            await notifications.emit(db, { userId: shop.owner_user_id, type: "seller.new_order", data: { orderId: order.id, number } });
+          }
+        }
         return hydrate(db, order, actor);
       });
     },

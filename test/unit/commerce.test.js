@@ -14,7 +14,7 @@ const codes = createDeliveryCodes(Buffer.alloc(32, 7).toString("base64"));
 
 const ctx = { ip: "203.0.113.5", requestId: "r" };
 
-function setup() {
+function setup({ notifications } = {}) {
   const fake = createFakeCommerce();
   fake.db.inventory.set(fake.key("store-01", "soap", ""), { id: fake.key("store-01", "soap", ""), on_hand: 10, reserved: 0 });
   fake.db.inventory.set(fake.key("store-01", "cough-syrup", ""), { id: fake.key("store-01", "cough-syrup", ""), on_hand: 13, reserved: 0 });
@@ -31,7 +31,7 @@ function setup() {
   const payments = { createForOrder: async () => {}, markCodCollected: async () => {}, settleOnCancel: async () => ({}) };
   // The customer's login number is 9812345678 and no other number has been confirmed (see addressPhone.test.js for the OTP flow).
   const phoneTrust = createPhoneTrust({ repos: { users: { getAccess: async () => ({ mobile: "9812345678" }) }, addresses: { isPhoneVerified: async () => false } } });
-  const orders = createOrdersService({ pool: {}, withTx, repos: fake.repos, phoneTrust, pricing, audit, prescriptions, payments, codes });
+  const orders = createOrdersService({ pool: {}, withTx, repos: fake.repos, phoneTrust, pricing, audit, prescriptions, payments, codes, ...(notifications ? { notifications } : {}) });
   const addresses = createAddressesService({ pool: {}, withTx, repos: fake.repos, config: { auth: { refreshSecret: "s" }, otp: {} }, notifier: { sendSms: async () => {} }, audit, phoneTrust });
   return { ...fake, audit, coupons, pricing, cart, orders, addresses };
 }
@@ -253,5 +253,49 @@ describe("addresses", () => {
   it("cannot update or delete someone else's address", async () => {
     const e = setup();
     await assert.rejects(e.addresses.update("someone-else", "addr-1", { label: "x", name: "x", phone: "9812345678", line1: "x" }), { code: "ADDRESS_NOT_FOUND" });
+  });
+});
+
+
+describe("shop settings applied at checkout", () => {
+  const place = (e, over = {}) => e.orders.create(customer, { items: [{ productId: "soap", qty: 2 }], addressId: "addr-1", paymentMethod: "cod", deliveryOptionId: "standard", ...over }, ctx);
+  const shop = (e) => e.db.sellers.find((x) => x.id === "novatech");
+
+  it("a shop's minimum order shows in the cart preview and blocks placing the order — reserving nothing", async () => {
+    const e = setup(); shop(e).settings = { delivery: { minOrder: 100 } };
+    const preview = await e.cart.price({ items: [{ productId: "soap", qty: 2 }], branch: "store-01" }, null);
+    const issue = preview.issues.find((i) => i.type === "seller_min_order");
+    assert.ok(issue, "the cart tells the customer"); assert.match(issue.message, /NovaTech has a minimum order of 100\. Add 90 more/);
+    await assert.rejects(place(e), { code: "CART_INVALID" });
+    assert.equal(e.db.inventory.get(e.key("store-01", "soap", "")).reserved, 0);
+    await assert.rejects(place(e, { items: [{ productId: "soap", qty: 10 }] }), { code: "CART_INVALID" }); // 50 is still under 100
+  });
+
+  it("an order that meets the minimum goes through", async () => {
+    const e = setup(); shop(e).settings = { delivery: { minOrder: 40 } };
+    const order = await place(e, { items: [{ productId: "soap", qty: 10 }] }); // 10 x 5 = 50 >= 40
+    assert.equal(order.status, "placed");
+  });
+
+  it("a payment method the shop has turned off is refused with a clear message, and nothing is reserved", async () => {
+    const e = setup(); shop(e).settings = { payments: { cod: false } };
+    await assert.rejects(place(e, { paymentMethod: "cod" }), (err) => { assert.equal(err.code, "PAYMENT_METHOD_NOT_ACCEPTED"); assert.match(err.message, /NovaTech doesn't accept cash on delivery/); return true; });
+    assert.equal(e.db.inventory.get(e.key("store-01", "soap", "")).reserved, 0);
+    assert.equal((await place(e, { paymentMethod: "card" })).status, "placed", "the methods it does accept still work");
+  });
+
+  it("shops that never saved settings behave exactly as before", async () => {
+    const e = setup(); // no `settings` on any shop
+    assert.equal((await place(e)).status, "placed");
+  });
+
+  it("the shop owner is told about a new order, unless they switched New orders off", async () => {
+    const sent = []; const e = setup({ notifications: { emit: async (_d, n) => { sent.push(`${n.type}>${n.userId}`); } } });
+    await place(e);
+    assert.deepEqual(sent, [`order.placed>${customer.id}`, "seller.new_order>u-nova"]);
+    const sent2 = []; const e2 = setup({ notifications: { emit: async (_d, n) => { sent2.push(`${n.type}>${n.userId}`); } } });
+    shop(e2).settings = { notifications: { newOrder: false } };
+    await place(e2);
+    assert.deepEqual(sent2, [`order.placed>${customer.id}`]);
   });
 });

@@ -1,5 +1,6 @@
 import { quoteDelivery } from "../domain/deliveryPricing.js";
 import { round2 } from "../utils/text.js";
+import { minOrderIssues } from "../domain/sellerSettings.js";
 
 /**
  * The one place cart totals get computed — used by both the cart preview (GET-like pricing, no side effects) and
@@ -56,6 +57,11 @@ export function createPricingService({ repos, coupons }) {
         lines.push(r.line);
         issues.push(...r.issues);
         if (r.rowId) rowIds.push({ rowId: r.rowId, productId: r.line.productId, variantId: r.line.variantId, qty: r.line.qty });
+      }
+      // Each shop's own minimum order (staff POS sales aren't marketplace orders, so they skip it).
+      if (!manage) {
+        const sellerIds = [...new Set(lines.map((l) => l.sellerId).filter(Boolean))];
+        if (sellerIds.length) issues.push(...minOrderIssues(lines, await repos.sellers.settingsByIds(db, sellerIds)));
       }
       return { lines, issues, rowIds };
     },

@@ -1,5 +1,6 @@
 import { toSellerDto } from "../models/sellers.model.js";
-import { badRequest, forbidden, notFound } from "../utils/errors.js";
+import { badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
+import { settingsView } from "../domain/sellerSettings.js";
 
 const can = (actor, perm) => !!actor?.permissions?.includes(perm);
 
@@ -29,7 +30,31 @@ export function createSellersService({ pool, withTx, repos, encryption, audit })
     /** For the "shop I own" case — used right after login/onboarding to hydrate the seller dashboard. */
     async getMine(actor) {
       if (!actor.sellerId) return null;
-      return this.get(actor, actor.sellerId);
+      const row = await repo.getById(pool, actor.sellerId);
+      if (!row) return null;
+      return { ...toSellerDto(row), settings: settingsView(row) }; // the owner's own endpoint, so their saved settings come with it
+    },
+
+    async getSettings(actor, id) {
+      if (actor.sellerId !== id && !can(actor, "sellers:read_all")) throw notFound("SELLER_NOT_FOUND", "Seller not found");
+      const row = await repo.getById(pool, id);
+      if (!row) throw notFound("SELLER_NOT_FOUND", "Seller not found");
+      return settingsView(row);
+    },
+
+    /** Only the shop's own owner can change its settings (staff use the status / approval flows instead). */
+    async updateSettings(actor, id, body, ctx) {
+      if (actor.sellerId !== id || !can(actor, "seller:manage_own")) throw notFound("SELLER_NOT_FOUND", "Seller not found");
+      return withTx(async (db) => {
+        const row = await repo.getById(db, id, { forUpdate: true });
+        if (!row) throw notFound("SELLER_NOT_FOUND", "Seller not found");
+        if (row.status !== "active") throw conflict("SELLER_NOT_ACTIVE", "Your shop must be active to change its settings");
+        const { name, description, email, ...rest } = body;
+        const updated = await repo.updateSettings(db, id, { name, description, contactEmail: email, settings: { ...rest, email } });
+        if (updated.owner_user_id) await repo.setOwnerNotifyPrefs(db, updated.owner_user_id, { email: body.notifications.email, sms: body.notifications.sms });
+        await audit.log({ actor, action: "seller.settings_updated", entityType: "seller", entityId: id, newValue: { name, sections: Object.keys(rest) } }, ctx, db);
+        return settingsView(updated);
+      });
     },
 
     /** Direct status changes outside the application flow — e.g. suspending/reinstating an already-approved

@@ -22,6 +22,25 @@ export function createSellersRepository() {
       return rows[0] || null;
     },
 
+    /** `id, name, settings` for the shops in a cart — what checkout needs to apply their rules. */
+    async settingsByIds(db, ids) {
+      if (!ids.length) return [];
+      const { rows } = await db.query("SELECT id, name, owner_user_id, settings FROM sellers WHERE id = ANY($1::text[])", [ids]);
+      return rows;
+    },
+
+    async updateSettings(db, id, { name, description, contactEmail, settings }) {
+      const { rows } = await db.query(
+        `UPDATE sellers SET name = $2, description = $3, contact_email = COALESCE(NULLIF($4, ''), contact_email), settings = $5::jsonb, updated_at = now()
+          WHERE id = $1 RETURNING *`, [id, name, description || null, contactEmail ?? "", JSON.stringify(settings)]);
+      return rows[0] || null;
+    },
+
+    /** The shop's email/SMS notification switches are the owner account's existing delivery preferences. */
+    async setOwnerNotifyPrefs(db, userId, { email, sms }) {
+      await db.query("UPDATE users SET notify_email = $2, notify_sms = $3 WHERE id = $1", [userId, email, sms]);
+    },
+
     async idExists(db, id) {
       return (await db.query("SELECT 1 FROM sellers WHERE id = $1", [id])).rows.length > 0;
     },

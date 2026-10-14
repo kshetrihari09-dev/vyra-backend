@@ -504,7 +504,8 @@ describe("notifications raised by delivery", () => {
     const id = await toOutForDelivery(e, o, r1.id, "u-r1");
     await e.delivery.deliver(riderActor("u-r1"), id, { otp: otpOf(e, o.id), cashCollected: Number(e.db.orders.find((x) => x.id === o.id).total) }, ctx);
     assert.deepEqual(typesFor(e, o.id), [
-      `order.placed>${customer.id}`, `order.confirmed>${customer.id}`, `order.packed>${customer.id}`,
+      `order.placed>${customer.id}`, "seller.new_order>u-nova", // the shop whose item is in the order is told too
+      `order.confirmed>${customer.id}`, `order.packed>${customer.id}`,
       `delivery.assigned>${customer.id}`, "rider.assigned>u-r1",
       `delivery.out_for_delivery>${customer.id}`, `delivery.delivered>${customer.id}`,
     ]);

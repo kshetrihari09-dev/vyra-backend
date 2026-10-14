@@ -1,4 +1,5 @@
 import { toPayoutDto } from "../models/sellerPayouts.model.js";
+import { wantsNotification } from "../domain/sellerSettings.js";
 import { badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
 
 const can = (actor, perm) => !!actor?.permissions?.includes(perm);
@@ -8,7 +9,7 @@ export function createSellerPayoutsService({ pool, withTx, repos, audit, notific
 
   async function notifyPayoutOwner(db, payout, type, extra) {
     const seller = await repos.sellers.getById(db, payout.seller_id);
-    if (seller?.owner_user_id) await notifications.emit(db, { userId: seller.owner_user_id, type, data: { amount: payout.amount, ...extra } });
+    if (seller?.owner_user_id && wantsNotification(seller.settings, "payout")) await notifications.emit(db, { userId: seller.owner_user_id, type, data: { amount: payout.amount, ...extra } });
   }
 
   return {

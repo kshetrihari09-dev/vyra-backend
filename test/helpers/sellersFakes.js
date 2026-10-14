@@ -12,6 +12,7 @@ export function createFakeSellers({ orderItems = [] } = {}) {
   };
 
   const sellers = {
+    async settingsByIds(_d, ids) { return db.sellers.filter((x) => ids.includes(x.id)).map((x) => ({ id: x.id, name: x.name, owner_user_id: x.owner_user_id ?? null, settings: x.settings ?? {} })); },
     async insert(_d, s) {
       const row = { id: s.id, name: s.name, first_party: false, status: "active", commission_rate: s.commissionRate, owner_user_id: s.ownerUserId ?? null, contact_email: s.contactEmail ?? null, contact_mobile: s.contactMobile ?? null, rating: null, reviews_count: 0, payout_method_label: null, joined_at: new Date() };
       db.sellers.push(row);

@@ -136,6 +136,11 @@ export const TEMPLATES = {
     title: () => "Your shop was suspended",
     message: (d) => `${d.shopName} has been suspended. Contact support for details.`,
   },
+  "seller.new_order": {
+    kind: "seller", email: true, sms: true,
+    title: () => "New order for your shop",
+    message: (d) => `Order ${d.number} includes items from your shop. Open your dashboard to confirm it.`,
+  },
   "seller_payout.paid": {
     kind: "seller", email: true,
     title: () => "Payout sent",
