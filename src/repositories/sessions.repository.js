@@ -66,6 +66,9 @@ export function createSessionsRepository() {
       );
     },
 
+    /** Removes a challenge whose code was never delivered, so a failed send doesn't use up the person's hourly allowance. */
+    async deleteOtpChallenge(db, id) { await db.query("DELETE FROM otp_challenges WHERE id = $1 AND consumed_at IS NULL", [id]); },
+
     async countRecentOtpChallenges(db, mobile, sinceIso) {
       const { rows } = await db.query("SELECT count(*) AS n FROM otp_challenges WHERE mobile = $1 AND created_at > $2", [mobile, sinceIso]);
       return Number(rows[0].n);

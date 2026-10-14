@@ -57,7 +57,12 @@ export function createAuthService({ config, pool, withTx, repos, hasher, tokens,
         payload: { name, email: email ?? null, passwordHash: await hasher.hash(password) },
         expiresAt: later(config.otp.ttlSeconds * 1000),
       });
-      await notifier.sendSms({ to: mobile, text: `Your Vyra verification code is ${code}. It expires in ${Math.round(config.otp.ttlSeconds / 60)} minutes.` });
+      try {
+        await notifier.sendSms({ to: mobile, text: `Your Vyra verification code is ${code}. It expires in ${Math.round(config.otp.ttlSeconds / 60)} minutes.` });
+      } catch (err) {
+        await sessions.deleteOtpChallenge?.(pool, challengeId).catch(() => {}); // an undelivered code must not count against the hourly limit
+        throw err;
+      }
       return { challengeId, expiresInSeconds: config.otp.ttlSeconds };
     },
 
