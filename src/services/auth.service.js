@@ -40,7 +40,7 @@ export function createAuthService({ config, pool, withTx, repos, hasher, tokens,
   return {
     // ------------------------------------------------------------------ registration (mobile OTP)
     /** Step 1: validate, park the sign-up in an OTP challenge, text the code. Nothing is created yet. */
-    async registerStart({ name, mobile, email: rawEmail, password }, ctx) {
+    async registerStart({ name, mobile, email: rawEmail, password, channel = "sms" }, ctx) {
       const email = rawEmail ? rawEmail.trim().toLowerCase() : undefined; // service-level normalisation: never rely on the caller
       const existing = await users.findByEmailOrMobile(pool, { email, mobile });
       if (existing.some((u) => u.mobile === mobile)) throw badRequest("MOBILE_TAKEN", "This mobile number is already registered", [{ path: "body.mobile", message: "This mobile number is already registered" }]);
@@ -49,21 +49,28 @@ export function createAuthService({ config, pool, withTx, repos, hasher, tokens,
       const recent = await sessions.countRecentOtpChallenges(pool, mobile, agoIso(HOUR));
       if (recent >= config.otp.maxStartsPerMobilePerHour) throw tooManyRequests("OTP_RATE_LIMITED", "Too many verification codes requested. Try again in an hour.");
 
+      if (channel === "email") {
+        if (!email) throw badRequest("EMAIL_REQUIRED", "Enter your email to get the code by email", [{ path: "body.email", message: "Enter your email to get the code by email" }]);
+        if ((await sessions.countRecentOtpChallengesForEmail(pool, email, agoIso(HOUR))) >= config.otp.maxStartsPerMobilePerHour) throw tooManyRequests("OTP_RATE_LIMITED", "Too many verification codes requested. Try again in an hour.");
+      }
+
       const challengeId = randomUUID();
       const code = config.otp.devCode ?? randomDigits(config.otp.length);
       await sessions.insertOtpChallenge(pool, {
         id: challengeId, purpose: "register", mobile,
         codeHash: hash("otp", `${challengeId}:${code}`),
-        payload: { name, email: email ?? null, passwordHash: await hasher.hash(password) },
+        payload: { name, email: email ?? null, passwordHash: await hasher.hash(password), channel },
         expiresAt: later(config.otp.ttlSeconds * 1000),
       });
+      const minutes = Math.round(config.otp.ttlSeconds / 60);
       try {
-        await notifier.sendSms({ to: mobile, text: `Your Vyra verification code is ${code}. It expires in ${Math.round(config.otp.ttlSeconds / 60)} minutes.` });
+        if (channel === "email") await notifier.sendEmail({ to: email, subject: "Your Vyra verification code", text: `Your Vyra verification code is ${code}. It expires in ${minutes} minutes. If you didn't try to sign up, you can ignore this email.` });
+        else await notifier.sendSms({ to: mobile, text: `Your Vyra verification code is ${code}. It expires in ${minutes} minutes.` });
       } catch (err) {
         await sessions.deleteOtpChallenge?.(pool, challengeId).catch(() => {}); // an undelivered code must not count against the hourly limit
         throw err;
       }
-      return { challengeId, expiresInSeconds: config.otp.ttlSeconds };
+      return { challengeId, expiresInSeconds: config.otp.ttlSeconds, channel };
     },
 
     /** Step 2: check the code; on success create user + customer profile + 'customer' role and sign in. */
@@ -79,15 +86,16 @@ export function createAuthService({ config, pool, withTx, repos, hasher, tokens,
           return { error: badRequest("INVALID_CODE", "That code isn't right") };
         }
 
-        const { name, email, passwordHash } = ch.payload;
+        const { name, email, passwordHash, channel = "sms" } = ch.payload;
+        const byEmail = channel === "email"; // the code reached the EMAIL, so that is what was proven (the mobile number is not)
         const clash = await users.findByEmailOrMobile(db, { email, mobile: ch.mobile });
         if (clash.length) return { error: badRequest("ACCOUNT_EXISTS", "An account with these details already exists") };
 
-        const userId = await users.create(db, { fullName: name, email, mobile: ch.mobile, passwordHash, mobileVerified: true });
+        const userId = await users.create(db, { fullName: name, email, mobile: ch.mobile, passwordHash, mobileVerified: !byEmail, emailVerified: byEmail });
         await users.createCustomerProfile(db, userId);
         await roles.addUserRole(db, userId, "customer", null);
         await sessions.consumeOtpChallenge(db, challengeId);
-        await audit.log({ actorLabel: "user (self-registration)", action: "auth.registered", entityType: "user", entityId: userId, newValue: { mobileVerified: true } }, ctx, db);
+        await audit.log({ actorLabel: "user (self-registration)", action: "auth.registered", entityType: "user", entityId: userId, newValue: byEmail ? { emailVerified: true } : { mobileVerified: true } }, ctx, db);
         const session = await issueSession(db, userId, ctx);
         return { userId, session, user: await loadUserDto(db, userId) };
       });

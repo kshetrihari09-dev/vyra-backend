@@ -51,9 +51,9 @@ export function createFakeRepos(clock) {
       const u = db.users.find((x) => x.status === "active" && (ident.includes("@") ? x.email === ident.toLowerCase() : x.mobile === ident));
       return u ? { id: u.id, full_name: u.fullName, email: u.email, mobile: u.mobile } : null;
     },
-    async create(_d, { fullName, email, mobile, passwordHash, mobileVerified }) {
+    async create(_d, { fullName, email, mobile, passwordHash, mobileVerified, emailVerified }) {
       const u = { id: id(), fullName, email: email?.toLowerCase() ?? null, mobile: mobile ?? null, passwordHash, status: "active", failed: 0, lockedUntil: null,
-        mobileVerifiedAt: mobileVerified ? now() : null, emailVerifiedAt: null, lastLoginAt: null, createdAt: now(), legacyId: null };
+        mobileVerifiedAt: mobileVerified ? now() : null, emailVerifiedAt: emailVerified ? now() : null, lastLoginAt: null, createdAt: now(), legacyId: null };
       db.users.push(u); return u.id;
     },
     async createCustomerProfile(_d, uid) { db.customers.push(uid); },
@@ -109,6 +109,8 @@ export function createFakeRepos(clock) {
       const c = db.otps.find((x) => x.id === cid);
       return c ? { id: c.id, purpose: c.purpose, mobile: c.mobile, code_hash: c.codeHash, payload: c.payload, attempts: c.attempts, expires_at: c.expiresAt, consumed_at: c.consumedAt } : null;
     },
+    async countRecentOtpChallengesForEmail(_d, email, sinceIso) { return db.otps.filter((c) => c.purpose === "register" && c.payload?.email === email && c.createdAt > new Date(sinceIso)).length; },
+    async deleteOtpChallenge(_d, cid) { db.otps = db.otps.filter((x) => x.id !== cid || x.consumedAt); },
     async bumpOtpAttempts(_d, cid) { db.otps.find((x) => x.id === cid).attempts += 1; },
     async consumeOtpChallenge(_d, cid) { db.otps.find((x) => x.id === cid).consumedAt = now(); },
   };

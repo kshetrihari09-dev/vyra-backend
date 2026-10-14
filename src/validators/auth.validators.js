@@ -9,7 +9,11 @@ export const registerStart = z.object({
   mobile,
   email: optionalEmail,
   password,
-}).strict();
+  // Where the one-time code is sent. "email" needs an email address (the account is then verified by email, not by mobile).
+  channel: z.enum(["sms", "email"]).default("sms"),
+}).strict().superRefine((v, ctx) => {
+  if (v.channel === "email" && !v.email) ctx.addIssue({ code: "custom", path: ["email"], message: "Enter your email to get the code by email" });
+});
 
 export const registerVerify = z.object({
   challengeId: uuid,

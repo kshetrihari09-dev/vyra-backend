@@ -201,3 +201,46 @@ describe("password reset & change", () => {
     assert.ok((await env.service.refresh(fresh.refreshToken, ctx)).accessToken);
   });
 });
+
+describe("registration (code by email)", () => {
+  let env;
+  beforeEach(() => { env = setup(); });
+
+  it("emails the code (not an SMS) and records that the EMAIL was verified, not the mobile", async () => {
+    const { challengeId, channel } = await env.service.registerStart({ ...signup, channel: "email" }, ctx);
+    assert.equal(channel, "email");
+    assert.equal(env.notifier.sent.length, 1);
+    assert.equal(env.notifier.sent[0].channel, "email");
+    assert.equal(env.notifier.sent[0].to, "sabina@example.com");
+    assert.match(env.notifier.sent[0].text, /verification code is \d{4}/);
+    const res = await env.service.registerVerify({ challengeId, code: "1234" }, ctx);
+    assert.equal(res.user.emailVerified, true);
+    assert.equal(res.user.phoneVerified, false);
+    assert.equal(env.audit.entries.at(-1).newValue.emailVerified, true);
+  });
+
+  it("needs an email address to email a code", async () => {
+    const { email, ...noEmail } = signup;
+    await assert.rejects(env.service.registerStart({ ...noEmail, channel: "email" }, ctx), { code: "EMAIL_REQUIRED" });
+    assert.equal(env.notifier.sent.length, 0);
+  });
+
+  it("still defaults to SMS and verifies the mobile", async () => {
+    const res = await register(env);
+    assert.equal(env.notifier.sent[0].channel, "sms");
+    assert.equal(res.user.phoneVerified, true);
+    assert.equal(res.user.emailVerified, false);
+  });
+
+  it("limits how many codes one inbox can be sent per hour, even with different mobile numbers", async () => {
+    const max = env.config.otp.maxStartsPerMobilePerHour;
+    for (let i = 0; i < max; i++) await env.service.registerStart({ ...signup, mobile: `98123456${String(i).padStart(2, "0")}`, channel: "email" }, ctx);
+    await assert.rejects(env.service.registerStart({ ...signup, mobile: "9899999999", channel: "email" }, ctx), { code: "OTP_RATE_LIMITED" });
+  });
+
+  it("a failed email send gives the attempt back and surfaces the error", async () => {
+    env.notifier.sendEmail = async () => { throw Object.assign(new Error("down"), { code: "NOTIFIER_FAILED" }); };
+    await assert.rejects(env.service.registerStart({ ...signup, channel: "email" }, ctx), { code: "NOTIFIER_FAILED" });
+    assert.equal(env.db.otps.length, 0);
+  });
+});

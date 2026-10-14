@@ -72,3 +72,14 @@ describe("Vyra Call validators", () => {
     assert.equal(endBody.safeParse({ reason: "completed" }).success, false);
   });
 });
+
+import { registerStart } from "../../src/validators/auth.validators.js";
+describe("sign-up channel validation", () => {
+  const body = { name: "A B", mobile: "9812345678", password: "Passw0rdOK" };
+  it("defaults to sms; email channel requires an email", () => {
+    assert.equal(registerStart.parse(body).channel, "sms");
+    assert.equal(registerStart.safeParse({ ...body, channel: "email" }).success, false);
+    assert.equal(registerStart.safeParse({ ...body, channel: "email", email: "a@b.com" }).success, true);
+    assert.equal(registerStart.safeParse({ ...body, channel: "whatsapp" }).success, false);
+  });
+});
