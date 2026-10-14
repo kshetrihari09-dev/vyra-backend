@@ -266,6 +266,17 @@ export function createCallsService({ pool, withTx, repos, realtime, config, logg
       const until = await repo.setPresence(pool, { sellerId: shop.id, userId: user.id, accepting, ttlSeconds: cfg.shopPresenceTtlSeconds });
       return { online: true, accepting, until: iso(until), shop: { id: shop.id, name: shop.name } };
     },
+    /**
+     * Called every ~15 s while the shop owner's live stream is open. The open connection IS the proof the dashboard is there, so
+     * availability no longer depends on browser timers (which background tabs throttle). Only refreshes a row the dashboard
+     * already created, so a paused shop stays paused and a shop that never went online stays offline.
+     */
+    async touchPresence(user) {
+      if (!cfg.enabled) return false;
+      const shop = await repo.shopByOwner(pool, user.id);
+      if (!shop || shop.status !== "active") return false;
+      return repo.touchPresence(pool, { sellerId: shop.id, userId: user.id, ttlSeconds: cfg.shopPresenceTtlSeconds });
+    },
     async clearPresence(user) {
       const shop = await repo.shopByOwner(pool, user.id);
       if (shop) await repo.clearPresence(pool, shop.id);

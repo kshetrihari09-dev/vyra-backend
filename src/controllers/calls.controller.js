@@ -9,7 +9,7 @@ export function createCallsController({ services, config }) {
   const { calls, callsRealtime } = services;
   const me = (req) => req.auth.user;
 
-  function openStream(req, res, user, first, snapshot) {
+  function openStream(req, res, user, first, snapshot, onTick) {
     res.status(200).set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
     res.flushHeaders?.();
     const write = (event, data) => { if (!res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
@@ -23,7 +23,7 @@ export function createCallsController({ services, config }) {
       unsubscribe?.();
       if (!res.writableEnded) res.end();
     };
-    const heartbeat = setInterval(() => { if (!res.writableEnded) res.write(": ping\n\n"); }, 15_000);
+    const heartbeat = setInterval(() => { if (!res.writableEnded) { res.write(": ping\n\n"); onTick?.(); } }, 15_000);
     const lifetime = setTimeout(() => { write("expired", {}); close(); }, config.auth.accessTtlSeconds * 1000);
     heartbeat.unref?.(); lifetime.unref?.();
     req.on("close", close);
@@ -55,7 +55,8 @@ export function createCallsController({ services, config }) {
       let cursor = req.valid.query.after;
       const first = await calls.snapshot(user, cursor);
       cursor = first.cursor;
-      await openStream(req, res, user, first, async () => { const snap = await calls.snapshot(user, cursor); cursor = snap.cursor; return snap; });
+      await openStream(req, res, user, first, async () => { const snap = await calls.snapshot(user, cursor); cursor = snap.cursor; return snap; },
+        () => { if (first.isShop) calls.touchPresence(user).catch(() => {}); }); // keep a shop's availability alive from the open connection
     },
 
     // shop console

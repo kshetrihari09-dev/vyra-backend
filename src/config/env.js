@@ -147,7 +147,7 @@ export function loadConfig(env = process.env) {
       connectSeconds: int("CALLS_CONNECT_SECONDS", 45, { min: 15 }),      // accepted -> audio connected, else the call fails
       maxMinutes: int("CALLS_MAX_MINUTES", 60, { min: 1 }),               // hard cap on one call
       peerTimeoutSeconds: int("CALLS_PEER_TIMEOUT_SECONDS", 45, { min: 20 }), // no liveness ping from a side for this long ends the call
-      shopPresenceTtlSeconds: int("CALLS_SHOP_PRESENCE_TTL_SECONDS", 60, { min: 30 }),
+      shopPresenceTtlSeconds: int("CALLS_SHOP_PRESENCE_TTL_SECONDS", 90, { min: 30 }),
       stunUrls: stunUrls.length ? stunUrls : (isProd ? [] : ["stun:stun.l.google.com:19302"]),
       turnUrls, turnSecret, turnTtlSeconds: int("CALLS_TURN_TTL_SECONDS", 3600, { min: 300 }),
       allowStunOnly: callsAllowStunOnly,

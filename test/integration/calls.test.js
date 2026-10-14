@@ -299,3 +299,42 @@ describe("Vyra Call (real Postgres)", { skip: skipReason }, () => {
     });
   });
 });
+
+describe("shop presence is kept alive by the open stream (real Postgres)", { skip: skipReason }, () => {
+  let ctx; let request; let pool; let owner; let cust; let tOwner; let tCust; let shop;
+  before(async () => {
+    ctx = await boot({ CALLS_ENABLED: "true" }); request = ctx.request; pool = ctx.container.pool;
+    owner = await makeUser(ctx.container, { roles: ["customer", "seller"] }); cust = await makeUser(ctx.container);
+    shop = `it-presence-${uniq()}`;
+    await pool.query("INSERT INTO sellers (id, name, status, owner_user_id, is_demo) VALUES ($1,'Presence Shop','active',$2,true)", [shop, owner.id]);
+    [tOwner, tCust] = (await Promise.all([owner, cust].map((u) => loginAs(request, u)))).map((l) => l.token);
+  });
+  after(async () => {
+    await pool.query("DELETE FROM sellers WHERE id = $1", [shop]); await pool.query("DELETE FROM users WHERE id = ANY($1)", [[owner.id, cust.id]]);
+    await ctx.container.services.callsRealtime.stop(); await ctx.close();
+  });
+  const status = async () => (await request.get(`/api/shops/${shop}/call-status`).set({ Authorization: `Bearer ${tCust}` })).body.data.state;
+  const calls = () => ctx.container.services.calls;
+
+  it("extends an existing heartbeat without a client timer, and keeps a paused shop paused", async () => {
+    await request.put("/api/shop/call-presence").set({ Authorization: `Bearer ${tOwner}` }).send({ accepting: true });
+    await pool.query("UPDATE shop_call_presence SET available_until = now() + interval '1 second' WHERE seller_id = $1", [shop]);
+    assert.equal(await calls().touchPresence({ id: owner.id }), true);
+    await new Promise((r) => setTimeout(r, 1500));
+    assert.equal(await status(), "online", "the stream kept it online past the old expiry");
+    await request.put("/api/shop/call-presence").set({ Authorization: `Bearer ${tOwner}` }).send({ accepting: false });
+    await calls().touchPresence({ id: owner.id });
+    assert.equal(await status(), "paused");
+  });
+  it("never creates presence for a shop that didn't announce itself, and ignores non-shop users", async () => {
+    await request.delete("/api/shop/call-presence").set({ Authorization: `Bearer ${tOwner}` });
+    assert.equal(await calls().touchPresence({ id: owner.id }), false);
+    assert.equal(await status(), "offline");
+    assert.equal(await calls().touchPresence({ id: cust.id }), false);
+  });
+  it("a heartbeat arriving after a 'go offline' brings the shop back (no stuck-offline ordering trap)", async () => {
+    await request.delete("/api/shop/call-presence").set({ Authorization: `Bearer ${tOwner}` });
+    await request.put("/api/shop/call-presence").set({ Authorization: `Bearer ${tOwner}` }).send({ accepting: true });
+    assert.equal(await status(), "online");
+  });
+});

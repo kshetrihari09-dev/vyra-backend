@@ -25,6 +25,13 @@ export function createCallsRepository() {
          RETURNING available_until`, [sellerId, userId, accepting, ttlSeconds]);
       return rows[0].available_until;
     },
+    /** Extends an EXISTING presence row (never creates one, never changes `accepting`) — driven by the shop's open live stream. */
+    async touchPresence(db, { sellerId, userId, ttlSeconds }) {
+      const { rowCount } = await db.query(
+        `UPDATE shop_call_presence SET available_until = now() + make_interval(secs => $3), updated_at = now() WHERE seller_id = $1 AND user_id = $2`,
+        [sellerId, userId, ttlSeconds]);
+      return rowCount > 0;
+    },
     async clearPresence(db, sellerId) { await db.query(`DELETE FROM shop_call_presence WHERE seller_id = $1`, [sellerId]); },
     async getPresence(db, sellerId) {
       const { rows } = await db.query(
