@@ -4,7 +4,7 @@ import { assertPaymentCleared, assertTransition } from "../domain/orderRules.js"
 import { AppError, badRequest, conflict, forbidden, notFound } from "../utils/errors.js";
 import { canShareLocation, isFinalOrder, stageOf, stepsFor } from "../domain/tracking.js";
 import { noRealtime } from "./realtime.service.js";
-import { createRoutingService, estimateLocal } from "./routing.service.js";
+import { createRoutingService, estimateLocal, haversineKm } from "./routing.service.js";
 import { createRiderAccess } from "./riderAccess.service.js";
 import { createRiderProvisioning } from "./riderProvisioning.js";
 
@@ -300,6 +300,16 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         if (!canShareLocation(d.status)) throw conflict("NOT_TRACKING", "Location is only shared while you have an active delivery.");
         const now = clock();
         if (d.last_located_at && now - new Date(d.last_located_at) < DELIVERY_RULES.locationMinIntervalMs) return { accepted: false };
+        // Bad fixes are dropped, not stored: they'd move the rider on the customer's map and feed a wrong ETA.
+        if (pt.accuracy != null && pt.accuracy > DELIVERY_RULES.maxLocationAccuracyM) return { accepted: false, reason: "low_accuracy" };
+        if (d.last_lat != null && d.last_lng != null && d.last_located_at) {
+          const dtMs = now - new Date(d.last_located_at);
+          if (dtMs < DELIVERY_RULES.jumpWindowMs) {
+            // Distance beyond what both fixes' own error margins could explain, against the time between them.
+            const metres = haversineKm({ lat: Number(d.last_lat), lng: Number(d.last_lng) }, pt) * 1000 - (Number(d.last_accuracy) || 0) - (pt.accuracy || 0);
+            if (metres >= DELIVERY_RULES.jumpMinMeters && metres / (dtMs / 1000) > DELIVERY_RULES.maxPlausibleSpeedMps) return { accepted: false, reason: "implausible_jump" };
+          }
+        }
         await repo.addLocation(db, d.id, pt);
         const refresh = !d.eta_updated_at || now - new Date(d.eta_updated_at) >= DELIVERY_RULES.etaRefreshMs;
         await repo.updateDelivery(db, d.id, { lastLat: pt.lat, lastLng: pt.lng, lastAccuracy: pt.accuracy ?? null, lastLocatedAt: now, ...(refresh ? { etaUpdatedAt: now } : {}) });
@@ -307,7 +317,7 @@ export function createDeliveryService({ pool, withTx, repos, audit, payments, co
         return { accepted: true, refresh: refresh ? { id: d.id, orderId: d.order_id, status: d.status, from: pt, pickup: point(d.pickup_lat, d.pickup_lng), customer: point(d.customer_lat, d.customer_lng) } : null };
       });
       if (res.refresh) await refreshEta(res.refresh);
-      return { accepted: res.accepted };
+      return res.accepted ? { accepted: true } : { accepted: false, ...(res.reason ? { reason: res.reason } : {}) };
     },
 
     /**

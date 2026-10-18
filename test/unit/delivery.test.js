@@ -451,8 +451,23 @@ describe("location sharing and tracking", () => {
     e.clock.advance(1000);
     assert.deepEqual(await e.delivery.updateLocation(riderActor("u-r1"), id, { lat: 27.71, lng: 85.31 }), { accepted: false });
     e.clock.advance(DELIVERY_RULES.locationMinIntervalMs);
-    assert.deepEqual(await e.delivery.updateLocation(riderActor("u-r1"), id, { lat: 27.72, lng: 85.32 }), { accepted: true });
+    assert.deepEqual(await e.delivery.updateLocation(riderActor("u-r1"), id, { lat: 27.7003, lng: 85.3003 }), { accepted: true });
     assert.equal(e.db.locations.length, 2);
+  });
+
+  it("drops coarse fixes and physically impossible jumps; keeps real movement; recovers after a gap", async () => {
+    await e.delivery.pickup(riderActor("u-r1"), id, ctx);
+    const rider = riderActor("u-r1"); const send = (pt) => e.delivery.updateLocation(rider, id, pt);
+    const step = () => e.clock.advance(DELIVERY_RULES.locationMinIntervalMs + 1000);
+    assert.deepEqual(await send({ lat: 27.7, lng: 85.3, accuracy: 10 }), { accepted: true });
+    step(); assert.deepEqual(await send({ lat: 27.7002, lng: 85.3002, accuracy: 900 }), { accepted: false, reason: "low_accuracy" });
+    step(); assert.deepEqual(await send({ lat: 27.7002, lng: 85.3002, accuracy: 150 }), { accepted: true }, "exactly at the limit is still fine");
+    step(); assert.deepEqual(await send({ lat: 27.75, lng: 85.35, accuracy: 20 }), { accepted: false, reason: "implausible_jump" }, "~7 km in a few seconds");
+    step(); assert.deepEqual(await send({ lat: 27.7006, lng: 85.3006, accuracy: 15 }), { accepted: true }, "ordinary movement (~50 m) is kept");
+    assert.equal(e.db.locations.length, 3);
+    // After two quiet minutes the next fix is taken as the truth, even far away, so a bad start can't freeze the map.
+    e.clock.advance(DELIVERY_RULES.jumpWindowMs + 1000);
+    assert.deepEqual(await send({ lat: 27.75, lng: 85.35, accuracy: 20 }), { accepted: true });
   });
 
   it("only the order's owner (and staff) can track it; a stranger gets 'not found'", async () => {

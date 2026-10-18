@@ -50,6 +50,10 @@ export const DELIVERY_RULES = {
   maxActivePerRider: 5,        // simultaneous assigned/accepted/picked-up deliveries per rider
   otpMaxAttempts: 5,           // wrong handover codes per order before it locks (a dispatcher must reset it)
   locationMinIntervalMs: 5000, // faster location pings than this are dropped, not stored
+  maxLocationAccuracyM: 150,   // a fix reported as worse than this (±m) is a coarse guess — dropped so the rider doesn't jump on the customer's map
+  maxPlausibleSpeedMps: 45,    // ~160 km/h: a move faster than this between two fixes isn't a delivery vehicle — it's a bad fix, dropped
+  jumpMinMeters: 500,          // …but only judged once the claimed move is at least this far (GPS noise alone never trips it)
+  jumpWindowMs: 120_000,       // after this long without an accepted fix, the next one is taken as the new truth (so a bad start can't freeze the map)
   etaRefreshMs: 30_000,        // how often a live ping may trigger an ETA recalculation (it can call a routing API)
   requestCooldownMs: 120_000,  // a shop may re-send "request delivery" for the same order at most this often
 };

@@ -25,6 +25,7 @@ import { createNotificationsRepository } from "./repositories/notifications.repo
 import { createSupportRepository } from "./repositories/support.repository.js";
 import { createCallsRepository } from "./repositories/calls.repository.js";
 import { createCallsService } from "./services/calls.service.js";
+import { createGeoService } from "./services/geo.service.js";
 import { createSupportService } from "./services/support.service.js";
 import { createRetentionJob } from "./jobs/retention.js";
 import { createScheduler } from "./jobs/scheduler.js";
@@ -141,6 +142,7 @@ export function createContainer(config, overrides = {}) {
 
   // Vyra Call signaling reuses the same LISTEN/NOTIFY hub on its own channel, keyed per user ("u:<id>").
   services.callsRealtime = createRealtime({ config, logger, channel: "vyra_call", eventName: "calls", maxPerUser: 3 });
+  services.geo = createGeoService();
   services.calls = createCallsService({ pool, withTx, repos, realtime: services.callsRealtime, config, logger });
 
   services.support = createSupportService({ pool, withTx, repos, notifier, notifications, realtime: services.supportRealtime, audit, config, logger });

@@ -177,6 +177,22 @@ describe("Vyra Call (real Postgres)", { skip: skipReason }, () => {
     });
   });
 
+  describe("signaling speed", () => {
+    it("handles a burst of ICE candidates in parallel — all stored, none lost, none refused", async () => {
+      await reset(); await present(tA);
+      const id = (await start(tCust, shopA)).body.data.id; await api.post(`/calls/${id}/accept`, tA);
+      const t0 = Date.now();
+      const rs = await Promise.all(Array.from({ length: 40 }, (_, i) => api.post(`/calls/${id}/signal`, tCust, { kind: "ice", payload: { ...ICE, candidate: `candidate:${i} 1 udp 1 192.0.2.1 ${5000 + i} typ host` } })));
+      assert.deepEqual([...new Set(rs.map((r) => r.status))], [201]);
+      const got = await ctx.container.services.calls.snapshot({ id: ownerA.id }, 0);
+      assert.equal(got.signals.filter((x) => x.kind === "ice").length, 40);
+      assert.ok(Date.now() - t0 < 5000, `40 signals took ${Date.now() - t0} ms`);
+      // once the call has ended, a late candidate is refused cleanly rather than stored
+      await api.post(`/calls/${id}/end`, tA);
+      assert.equal((await api.post(`/calls/${id}/signal`, tCust, { kind: "ice", payload: ICE })).status, 409);
+    });
+  });
+
   describe("busy, duplicates and races", () => {
     it("one open call per customer and per shop; a second customer hears 'busy'", async () => {
       await reset(); await present(tA); await present(tB);

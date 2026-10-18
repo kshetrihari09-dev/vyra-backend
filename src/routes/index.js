@@ -29,6 +29,8 @@ import { healthRoutes } from "./health.routes.js";
 import { supportRoutes } from "./support.routes.js";
 import { createSupportController } from "../controllers/support.controller.js";
 import { callsRoutes } from "./calls.routes.js";
+import { geoRoutes } from "./geo.routes.js";
+import { createGeoController } from "../controllers/geo.controller.js";
 import { createCallsController } from "../controllers/calls.controller.js";
 
 /** Mounts every module under /api. Later phases add products, cart, orders, inventory, ... here. */
@@ -48,6 +50,7 @@ export function createRoutes(container, limiters) {
   r.use("/", deliveryRoutes({ container, controller: createDeliveryController(container) }));
   r.use("/", notificationsRoutes({ container, controller: createNotificationsController(container) }));
   r.use("/", supportRoutes({ container, controller: createSupportController(container), limiters }));
+  r.use("/", geoRoutes({ controller: createGeoController(container), limiters }));
   r.use("/", callsRoutes({ container, controller: createCallsController(container), limiters }));
   r.use("/admin", adminRoutes({ container, usersController: createUsersController(container) }));
   return r;

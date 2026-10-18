@@ -122,6 +122,23 @@ export function createCallsRepository() {
     },
 
     // ---------------------------------------------------------------- signals
+    /** One round trip: the call plus its shop's owner, so the signaling hot path needs no second lookup to know who is who. */
+    async getForSignal(db, id) {
+      const { rows } = await db.query(
+        `SELECT c.*, s.owner_user_id AS shop_owner_id FROM vyra_calls c JOIN sellers s ON s.id = c.seller_id WHERE c.id = $1`, [id]);
+      return rows[0] || null;
+    },
+    /** Stores a signal only while the call is still connecting/active and this side is under its cap — atomically, in ONE statement,
+     *  so no transaction or row lock is needed and many ICE candidates can be handled in parallel. Returns the id, or null. */
+    async insertSignalIfOpen(db, { callId, fromRole, kind, payload, max }) {
+      const { rows } = await db.query(
+        `INSERT INTO vyra_call_signals (call_id, from_role, kind, payload)
+         SELECT $1, $2, $3, $4::jsonb
+          WHERE EXISTS (SELECT 1 FROM vyra_calls WHERE id = $1 AND status IN ('connecting','active'))
+            AND (SELECT count(*) FROM vyra_call_signals WHERE call_id = $1 AND from_role = $2) < $5
+         RETURNING id`, [callId, fromRole, kind, JSON.stringify(payload), max]);
+      return rows[0]?.id ?? null;
+    },
     async addSignal(db, { callId, fromRole, kind, payload }) {
       const { rows } = await db.query(
         `INSERT INTO vyra_call_signals (call_id, from_role, kind, payload) VALUES ($1,$2,$3,$4::jsonb) RETURNING id`,

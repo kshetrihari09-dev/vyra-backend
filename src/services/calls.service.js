@@ -218,20 +218,27 @@ export function createCallsService({ pool, withTx, repos, realtime, config, logg
       return dto(await repo.withNames(pool, call.id), role);
     },
 
-    /** Relay one SDP/ICE message to the OTHER participant of this call — and to nobody else. */
+    /**
+     * Relay one SDP/ICE message to the OTHER participant of this call — and to nobody else. This is the hottest path (dozens of
+     * ICE candidates per call), so it is three cheap queries with no transaction and no row lock: who-is-who from one join, one
+     * atomic insert that re-checks the call is still open, and one NOTIFY. Liveness comes from the separate ping.
+     */
     async signal(user, id, { kind, payload }) {
-      return withTx(async (db) => {
-        const { call, role } = await loadFor(db, id, user, { forUpdate: true });
-        if (call.status !== "connecting" && call.status !== "active") throw conflict("CALL_NOT_CONNECTING", "This call isn't being connected.", { status: call.status });
-        // The customer makes the offer, the shop answers — a participant can't impersonate the other side's part.
-        if (kind === "offer" && role !== "customer") throw forbidden("SIGNAL_NOT_ALLOWED", "Only the caller sends the offer.");
-        if (kind === "answer" && role !== "shop") throw forbidden("SIGNAL_NOT_ALLOWED", "Only the shop sends the answer.");
-        if ((await repo.countSignals(db, id, role)) >= MAX_SIGNALS_PER_ROLE) throw new AppError(429, "RATE_LIMITED", "Too many signaling messages for this call.");
-        const signalId = await repo.addSignal(db, { callId: id, fromRole: role, kind, payload });
-        await repo.touch(db, id, role);
-        await notifyPeer(db, call, role);
-        return { id: Number(signalId) };
-      });
+      const call = await repo.getForSignal(pool, id);
+      const role = !call ? null : call.customer_id === user.id ? "customer" : call.shop_owner_id === user.id ? "shop" : null;
+      if (!role) throw notFound("CALL_NOT_FOUND", "Call not found");
+      if (call.status !== "connecting" && call.status !== "active") throw conflict("CALL_NOT_CONNECTING", "This call isn't being connected.", { status: call.status });
+      // The customer makes the offer, the shop answers — a participant can't impersonate the other side's part.
+      if (kind === "offer" && role !== "customer") throw forbidden("SIGNAL_NOT_ALLOWED", "Only the caller sends the offer.");
+      if (kind === "answer" && role !== "shop") throw forbidden("SIGNAL_NOT_ALLOWED", "Only the shop sends the answer.");
+      const signalId = await repo.insertSignalIfOpen(pool, { callId: id, fromRole: role, kind, payload, max: MAX_SIGNALS_PER_ROLE });
+      if (signalId == null) { // either it just ended, or this side hit its cap
+        const now = await repo.getById(pool, id);
+        if (!now || !OPEN.has(now.status) || now.status === "ringing") throw conflict("CALL_NOT_CONNECTING", "This call isn't being connected.", { status: now?.status });
+        throw new AppError(429, "RATE_LIMITED", "Too many signaling messages for this call.");
+      }
+      await realtime.publish(pool, key(role === "customer" ? call.shop_owner_id : call.customer_id));
+      return { id: Number(signalId) };
     },
 
     // ================================================================= live stream

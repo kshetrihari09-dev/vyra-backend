@@ -100,3 +100,18 @@ describe("shop settings (real Postgres)", { skip: skipReason }, () => {
     assert.equal(paymentRejection(rows.filter((r) => r.id === shop), "card"), null);
   });
 });
+
+describe("GET /api/geo/locate (public)", { skip: skipReason }, () => {
+  let ctx; let request;
+  before(async () => { ctx = await boot(); request = ctx.request; });
+  after(async () => { await Promise.all(["callsRealtime", "realtime", "supportRealtime"].map((k) => ctx.container.services[k]?.stop?.().catch(() => {}))); await ctx.close(); });
+  it("answers without signing in, with the municipality and its ward count", async () => {
+    const r = await request.get("/api/geo/locate?lat=27.7006&lng=83.4483");
+    assert.equal(r.status, 200); assert.equal(r.body.data.municipality.id, "butwal-sub"); assert.equal(r.body.data.municipality.wards, 19);
+  });
+  it("reports a pin outside Nepal, and rejects nonsense input", async () => {
+    assert.equal((await request.get("/api/geo/locate?lat=28.6&lng=77.2")).body.data.inNepal, false);
+    assert.equal((await request.get("/api/geo/locate?lat=abc&lng=1")).status, 400);
+    assert.equal((await request.get("/api/geo/locate")).status, 400);
+  });
+});
