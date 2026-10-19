@@ -3,7 +3,7 @@ import { formatOrderNumber } from "../../src/repositories/orders.repository.js";
 /** In-memory repos for pricing/coupons/orders/addresses service tests — real services, fake data layer. */
 export function createFakeCommerce() {
   const db = {
-    branches: { "store-01": { id: "store-01", otp_required: true, name: "Vyra Central", lat: 27.7172, lng: 85.324 }, "store-02": { id: "store-02", otp_required: false } },
+    branches: { "store-01": { id: "store-01", otp_required: true, name: "Vaspoor Central", lat: 27.7172, lng: 85.324 }, "store-02": { id: "store-02", otp_required: false } },
     branchOrder: ["store-01", "store-02"],
     products: [
       { id: "soap", name: "Soap", category_id: "grocery", brand_id: "b1", price: 5, sale_price: null, tax_percent: 5, moq: 1, max_qty: 10, status: "active", prescription_required: false, seller_id: "novatech" },

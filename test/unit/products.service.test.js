@@ -123,7 +123,7 @@ describe("staff creating on behalf of a shop", () => {
     const p = await e.service.create(adminActor, { ...base, sku: "ADM-1", sellerId: "acme" }, ctx);
     assert.equal(p.sellerId, "acme");
   });
-  it("leaves it unowned (Vyra's own catalogue) when no shop is given", async () => {
+  it("leaves it unowned (Vaspoor's own catalogue) when no shop is given", async () => {
     const e = setup();
     const p = await e.service.create(adminActor, { ...base, sku: "ADM-2" }, ctx);
     assert.equal(p.sellerId, undefined);

@@ -117,7 +117,7 @@ export function createSupportService({ pool, withTx, repos, notifier, notificati
     if (alertTo && externalEnabled && (await repo.onlinePharmacists(db)).length === 0) {
       await repos.notifications.enqueue(db, {
         userId: null, channel: "email", to: alertTo, type: "support.pharmacy_alert",
-        subject: "A customer is waiting in the Vyra pharmacist inbox",
+        subject: "A customer is waiting in the Vaspoor pharmacist inbox",
         body: `A customer sent a message and no pharmacist is online.\nOpen the pharmacist console to read and reply: ${config.appUrl}/pharmacy`,
       });
     }
@@ -234,7 +234,7 @@ export function createSupportService({ pool, withTx, repos, notifier, notificati
       const order = refs.orderId ? await repo.orderOf(pool, refs.orderId) : null;
       const product = refs.productId ? await repo.productOf(pool, refs.productId) : null;
       const lines = [
-        `New message from a Vyra customer`,
+        `New message from a Vaspoor customer`,
         `Customer: ${oneLine(actor.name)}`,
         `Account email: ${actor.email || "(none on file)"}`,
         `Topic: ${TOPIC_LABELS[topic]}`,
@@ -246,7 +246,7 @@ export function createSupportService({ pool, withTx, repos, notifier, notificati
         department === "pharmacy" ? `Reply in the pharmacist inbox: ${config.appUrl}/pharmacy` : "Reply to the customer by email (Reply-To is their account email).",
       ].filter((l) => l !== null && l !== false && l !== undefined);
       try {
-        await notifier.sendEmail({ to: cap.to, subject: `[Vyra ${department}] ${TOPIC_LABELS[topic]} — ${oneLine(actor.name, 40)}`, text: lines.join("\n"), replyTo: actor.email || undefined });
+        await notifier.sendEmail({ to: cap.to, subject: `[Vaspoor ${department}] ${TOPIC_LABELS[topic]} — ${oneLine(actor.name, 40)}`, text: lines.join("\n"), replyTo: actor.email || undefined });
       } catch (err) {
         await repo.markEmailFailed(pool, saved.row.id, err?.message ?? err);
         logger?.warn?.("support email was not accepted", { messageId: saved.row.id, error: String(err?.message ?? err).slice(0, 200) });

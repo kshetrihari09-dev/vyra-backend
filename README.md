@@ -1,6 +1,6 @@
-# Vyra API
+# Vaspoor API
 
-One modular Node.js backend for every Vyra surface — customer, admin, seller, pharmacy, delivery/rider and POS.
+One modular Node.js backend for every Vaspoor surface — customer, admin, seller, pharmacy, delivery/rider and POS.
 Node 22.9+ · Express 5 · PostgreSQL 13+ · zod. **Status: Phase 8 (notifications, audit log, hardening).** See `../MIGRATION_PLAN.md`.
 
 ## Quick start

@@ -140,7 +140,7 @@ export function createContainer(config, overrides = {}) {
   const provisionRider = createRiderProvisioning({ repos, audit }); // one way to make a rider: admin-add and application-approval both use it
   services.delivery = createDeliveryService({ pool, withTx, repos, audit, payments: services.payments, codes: deliveryCodes, notifications, riderAccess: services.riderAccess, provisionRider, realtime: services.realtime, routing });
 
-  // Vyra Call signaling reuses the same LISTEN/NOTIFY hub on its own channel, keyed per user ("u:<id>").
+  // Vaspoor Call signaling reuses the same LISTEN/NOTIFY hub on its own channel, keyed per user ("u:<id>").
   services.callsRealtime = createRealtime({ config, logger, channel: "vyra_call", eventName: "calls", maxPerUser: 3 });
   services.geo = createGeoService();
   services.calls = createCallsService({ pool, withTx, repos, realtime: services.callsRealtime, config, logger });

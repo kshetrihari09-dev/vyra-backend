@@ -9,7 +9,7 @@ const base = { NODE_ENV: "test", DATABASE_URL: "postgres://x", JWT_SECRET: "a".r
 const prod = { ...base, NODE_ENV: "production", CORS_ORIGIN: "https://shop.example", PAYMENTS_MANUAL_WEBHOOK_SECRET: "x", NOTIFY_DRIVER: "disabled" };
 const uuid = "123e4567-e89b-42d3-a456-426614174000";
 
-describe("Vyra Call config", () => {
+describe("Vaspoor Call config", () => {
   it("defaults to enabled with a public STUN outside production", () => {
     const c = loadConfig(base).calls;
     assert.equal(c.enabled, true); assert.deepEqual(c.stunUrls, ["stun:stun.l.google.com:19302"]); assert.deepEqual(c.turnUrls, []);
@@ -50,7 +50,7 @@ describe("TURN credentials", () => {
   });
 });
 
-describe("Vyra Call validators", () => {
+describe("Vaspoor Call validators", () => {
   it("startBody needs a shop slug and a client uuid, and drops unknown fields", () => {
     assert.equal(startBody.safeParse({ sellerId: "fresh-grocers", clientCallId: uuid }).success, true);
     assert.equal(startBody.safeParse({ sellerId: "Bad Id", clientCallId: uuid }).success, false);

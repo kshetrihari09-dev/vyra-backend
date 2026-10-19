@@ -10,7 +10,7 @@ import { createDeliveryCodes } from "../../src/utils/deliveryCode.js";
 import { createFakeCommerce, customer } from "../helpers/commerceFakes.js";
 import { fakeAudit } from "../helpers/fakes.js";
 
-const STORE = { lat: 27.7172, lng: 85.324 };   // the seeded Vyra Central
+const STORE = { lat: 27.7172, lng: 85.324 };   // the seeded Vaspoor Central
 const ctx = { ip: "203.0.113.5", requestId: "r" };
 const codes = createDeliveryCodes(Buffer.alloc(32, 7).toString("base64"));
 const km = (dLat) => ({ lat: STORE.lat + dLat, lng: STORE.lng });   // 1° of latitude ≈ 111.19 km straight, × 1.3 road factor
@@ -71,7 +71,7 @@ describe("distance-based delivery charge (pure rules)", () => {
   it("beyond the maximum radius is not deliverable, and says how far it was", () => {
     const r = q(km(0.2));
     assert.equal(r.deliverable, false); assert.equal(r.distanceFee, null);
-    assert.match(outOfRangeMessage(r, "Vyra Central"), new RegExp(`${r.distanceKm} km from Vyra Central.*within ${DELIVERY_DISTANCE.maxKm} km`));
+    assert.match(outOfRangeMessage(r, "Vaspoor Central"), new RegExp(`${r.distanceKm} km from Vaspoor Central.*within ${DELIVERY_DISTANCE.maxKm} km`));
   });
 
   it("without a pin (or without a branch location) the fallback fee applies, so leaving the pin off is no loophole", () => {

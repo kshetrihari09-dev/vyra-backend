@@ -3,16 +3,16 @@ import { after, before, describe, it } from "node:test";
 import { boot, loginAs, makeUser, skipReason, uniq } from "./helpers.js";
 
 /**
- * Vyra Call against a real Postgres + the real Express app: authorisation, shop isolation, busy/duplicate handling, the
+ * Vaspoor Call against a real Postgres + the real Express app: authorisation, shop isolation, busy/duplicate handling, the
  * whole call state machine, signaling relay, call records, and the live SSE stream (LISTEN/NOTIFY). Audio itself is browser
- * WebRTC and is NOT covered here — see docs/VYRA_CALL.md for the real-device checklist.
+ * WebRTC and is NOT covered here — see docs/VASPOOR_CALL.md for the real-device checklist.
  */
 const uuid = () => crypto.randomUUID();
 const OFFER = { type: "offer", sdp: "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\n" };
 const ANSWER = { type: "answer", sdp: "v=0\r\no=- 3 4 IN IP4 127.0.0.1\r\ns=-\r\n" };
 const ICE = { candidate: "candidate:1 1 udp 2122260223 192.0.2.1 54321 typ host", sdpMid: "0", sdpMLineIndex: 0 };
 
-describe("Vyra Call (real Postgres)", { skip: skipReason }, () => {
+describe("Vaspoor Call (real Postgres)", { skip: skipReason }, () => {
   let ctx; let request; let pool;
   let cust; let cust2; let stranger; let ownerA; let ownerB; let shopA; let shopB; let tCust; let tCust2; let tStranger; let tA; let tB;
   const auth = (t) => ({ Authorization: `Bearer ${t}` });

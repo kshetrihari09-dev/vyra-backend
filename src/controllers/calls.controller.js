@@ -1,7 +1,7 @@
 import { ok } from "../utils/http.js";
 
 /**
- * Vyra Call HTTP + live stream. Like the order-tracking and support streams: any authorisation failure is an ordinary JSON error
+ * Vaspoor Call HTTP + live stream. Like the order-tracking and support streams: any authorisation failure is an ordinary JSON error
  * BEFORE the stream opens, a heartbeat keeps proxies from closing it, and it ends at the access token's lifetime so a revoked
  * or expired session can't keep listening (the client reconnects with a fresh token and resumes from its cursor).
  */
@@ -31,7 +31,7 @@ export function createCallsController({ services, config }) {
     return callsRealtime.subscribe({ orderId: `u:${user.id}`, userId: user.id, initial: false, snapshot, send: write, end: close })
       .then((off) => { unsubscribe = off; if (closed) off(); })
       .catch((err) => {
-        if (err?.code === "TOO_MANY_STREAMS") { write("error", { code: "TOO_MANY_STREAMS", message: "Vyra Call is open in too many tabs. Close one and try again." }); close(); return; }
+        if (err?.code === "TOO_MANY_STREAMS") { write("error", { code: "TOO_MANY_STREAMS", message: "Vaspoor Call is open in too many tabs. Close one and try again." }); close(); return; }
         close();
         throw err;
       });

@@ -3264,12 +3264,12 @@
  ],
  "company": {
   "id": "vyra",
-  "name": "Vyra Retail Ltd."
+  "name": "Vaspoor Retail Ltd."
  },
  "branches": [
   {
    "id": "store-01",
-   "name": "Vyra Central",
+   "name": "Vaspoor Central",
    "code": "CEN",
    "address": "12 Harbour Street, Central District",
    "city": "Metro City",
@@ -3283,7 +3283,7 @@
   },
   {
    "id": "store-02",
-   "name": "Vyra Riverside",
+   "name": "Vaspoor Riverside",
    "code": "RIV",
    "address": "88 Riverside Walk, North Quarter",
    "city": "Metro City",

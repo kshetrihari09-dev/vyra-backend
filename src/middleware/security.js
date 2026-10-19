@@ -49,7 +49,7 @@ export const createLimiters = (config) => ({
   supportSend: limiter(config, { windowMs: 60_000, limit: 30, keyGenerator: (req) => `u:${req.auth?.user?.id ?? "anon"}` }),
   supportForm: limiter(config, { windowMs: 60 * 60_000, limit: 10, keyGenerator: (req) => `u:${req.auth?.user?.id ?? "anon"}` }),
   supportRead: limiter(config, { windowMs: 60_000, limit: 120, keyGenerator: (req) => `u:${req.auth?.user?.id ?? "anon"}` }),
-  // Vyra Call limits are per signed-in user. callStart is the anti-harassment one: a customer can't ring shops in a loop.
+  // Vaspoor Call limits are per signed-in user. callStart is the anti-harassment one: a customer can't ring shops in a loop.
   geoLocate: limiter(config, { windowMs: 60_000, limit: 60 }), // public lookup: pin -> province/district/municipality
   callStart: limiter(config, { windowMs: 10 * 60_000, limit: 8, keyGenerator: (req) => `u:${req.auth?.user?.id ?? "anon"}` }),
   callControl: limiter(config, { windowMs: 60_000, limit: 60, keyGenerator: (req) => `u:${req.auth?.user?.id ?? "anon"}` }),

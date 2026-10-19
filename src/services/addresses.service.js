@@ -85,7 +85,7 @@ export function createAddressesService({ pool, withTx, repos, config, notifier, 
         id: challengeId, purpose: "address_phone", mobile: phone,
         codeHash: hash(challengeId, code), payload: { userId }, expiresAt: later(config.otp.ttlSeconds * 1000),
       });
-      await notifier.sendSms({ to: phone, text: `Your Vyra code to confirm this delivery number is ${code}. Don't share it. It expires in ${Math.round(config.otp.ttlSeconds / 60)} minutes.` });
+      await notifier.sendSms({ to: phone, text: `Your Vaspoor code to confirm this delivery number is ${code}. Don't share it. It expires in ${Math.round(config.otp.ttlSeconds / 60)} minutes.` });
       return { verified: false, challengeId, expiresInSeconds: config.otp.ttlSeconds };
     },
 
@@ -111,7 +111,7 @@ export function createAddressesService({ pool, withTx, repos, config, notifier, 
       // Heads-up on the LOGIN number: if someone else got into the account, the owner finds out. Never blocks the flow.
       try {
         const account = await phoneTrust.accountMobile(pool, userId);
-        if (account && account !== outcome.phone) await notifier.sendSms({ to: account, text: `Vyra: the number ${maskPhone(outcome.phone)} was just confirmed for deliveries on your account. If this wasn't you, change your password.` });
+        if (account && account !== outcome.phone) await notifier.sendSms({ to: account, text: `Vaspoor: the number ${maskPhone(outcome.phone)} was just confirmed for deliveries on your account. If this wasn't you, change your password.` });
       } catch { /* a failed notice must not undo a successful confirmation */ }
       return { verified: true, phone: outcome.phone };
     },

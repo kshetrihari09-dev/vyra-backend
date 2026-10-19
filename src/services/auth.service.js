@@ -64,8 +64,8 @@ export function createAuthService({ config, pool, withTx, repos, hasher, tokens,
       });
       const minutes = Math.round(config.otp.ttlSeconds / 60);
       try {
-        if (channel === "email") await notifier.sendEmail({ to: email, subject: "Your Vyra verification code", text: `Your Vyra verification code is ${code}. It expires in ${minutes} minutes. If you didn't try to sign up, you can ignore this email.` });
-        else await notifier.sendSms({ to: mobile, text: `Your Vyra verification code is ${code}. It expires in ${minutes} minutes.` });
+        if (channel === "email") await notifier.sendEmail({ to: email, subject: "Your Vaspoor verification code", text: `Your Vaspoor verification code is ${code}. It expires in ${minutes} minutes. If you didn't try to sign up, you can ignore this email.` });
+        else await notifier.sendSms({ to: mobile, text: `Your Vaspoor verification code is ${code}. It expires in ${minutes} minutes.` });
       } catch (err) {
         await sessions.deleteOtpChallenge?.(pool, challengeId).catch(() => {}); // an undelivered code must not count against the hourly limit
         throw err;
@@ -190,8 +190,8 @@ export function createAuthService({ config, pool, withTx, repos, hasher, tokens,
       const token = randomToken(32);
       await sessions.insertPasswordReset(pool, { userId: user.id, tokenHash: hash("reset", token), expiresAt: later(cfg.resetTtlMinutes * MINUTE) });
       const link = `${config.appUrl}/reset-password?token=${token}`;
-      const text = `Reset your Vyra password: ${link} (valid for ${cfg.resetTtlMinutes} minutes). If you didn't ask for this, ignore this message.`;
-      if (user.email) await notifier.sendEmail({ to: user.email, subject: "Reset your Vyra password", text });
+      const text = `Reset your Vaspoor password: ${link} (valid for ${cfg.resetTtlMinutes} minutes). If you didn't ask for this, ignore this message.`;
+      if (user.email) await notifier.sendEmail({ to: user.email, subject: "Reset your Vaspoor password", text });
       else await notifier.sendSms({ to: user.mobile, text });
     },
 

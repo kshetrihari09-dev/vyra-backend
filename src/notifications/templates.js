@@ -48,7 +48,7 @@ export const TEMPLATES = {
   "delivery.delivered": {
     kind: "delivery", email: true,
     title: () => "Delivered",
-    message: (d) => `Order ${d.number} was delivered. Thank you for shopping with Vyra.`,
+    message: (d) => `Order ${d.number} was delivered. Thank you for shopping with Vaspoor.`,
   },
   "delivery.retry": {
     kind: "delivery", sms: true,
@@ -86,7 +86,7 @@ export const TEMPLATES = {
   "support.reply": {
     kind: "support", email: true,
     title: () => "A pharmacist replied",
-    message: () => "A pharmacist replied to your question. Open Vyra and go to Help & Support to read it.",
+    message: () => "A pharmacist replied to your question. Open Vaspoor and go to Help & Support to read it.",
   },
   // ---- payments
   "refund.completed": {
@@ -119,7 +119,7 @@ export const TEMPLATES = {
   "seller_application.approved": {
     kind: "seller", email: true,
     title: () => "Your shop is approved",
-    message: (d) => `${d.shopName} is now live on Vyra. Open the seller dashboard to add products.`,
+    message: (d) => `${d.shopName} is now live on Vaspoor. Open the seller dashboard to add products.`,
   },
   "seller_application.rejected": {
     kind: "seller", email: true,

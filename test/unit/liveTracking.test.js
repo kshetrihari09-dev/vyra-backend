@@ -179,7 +179,7 @@ describe("the delivery run, as the customer sees it", () => {
     const t = await track();
     assert.equal(t.live, true);
     assert.equal(t.delivery.location.lat, 27.71);
-    assert.deepEqual(t.pickup, { ...STORE, name: "Vyra Central" });
+    assert.deepEqual(t.pickup, { ...STORE, name: "Vaspoor Central" });
     assert.deepEqual(t.destination, HOME);
     assert.equal(t.delivery.rider.name, "Daniel R.");
     assert.equal(t.delivery.rider.phone, "+1 555 0231");
@@ -343,7 +343,7 @@ describe("a shop requesting delivery", () => {
     await assert.rejects(e.delivery.requestDelivery(sellerNova, o.id, ctx), { code: "NOT_DISPATCHABLE" });          // no longer packed
   });
 
-  it("refuses an order that isn't packed yet and a shared basket (status is Vyra's, not one shop's)", async () => {
+  it("refuses an order that isn't packed yet and a shared basket (status is Vaspoor's, not one shop's)", async () => {
     const e = setup(); await makeRider(e, "u-r1");
     const early = await e.orders.create(customer, { items: [{ productId: "soap", qty: 1 }], addressId: "addr-1", paymentMethod: "cod", deliveryOptionId: "standard" }, ctx);
     await assert.rejects(e.delivery.requestDelivery(sellerNova, early.id, ctx), { code: "NOT_DISPATCHABLE" });

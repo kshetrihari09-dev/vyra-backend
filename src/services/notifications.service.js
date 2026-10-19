@@ -72,7 +72,7 @@ export function createNotificationsService({ pool, repo, notifier, logger, exter
       for (const m of batch) {
         try {
           if (m.channel === "sms") await notifier.sendSms({ to: m.to_address, text: m.body });
-          else await notifier.sendEmail({ to: m.to_address, subject: m.subject ?? "Vyra", text: m.body });
+          else await notifier.sendEmail({ to: m.to_address, subject: m.subject ?? "Vaspoor", text: m.body });
           await repo.markSent(pool, m.id);
           out.sent++;
         } catch (err) {

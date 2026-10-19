@@ -52,8 +52,8 @@ export function loadConfig(env = process.env) {
   // "brevo" sends straight through Brevo's REST API (transactional email + transactional SMS) — no gateway to host.
   const brevoApiKey = (env.BREVO_API_KEY || "").trim();
   const brevoSenderEmail = (env.BREVO_SENDER_EMAIL || "").trim().toLowerCase();
-  const brevoSenderName = (env.BREVO_SENDER_NAME || "Vyra").trim();
-  const brevoSmsSender = (env.BREVO_SMS_SENDER || "Vyra").trim();
+  const brevoSenderName = (env.BREVO_SENDER_NAME || "Vaspoor").trim();
+  const brevoSmsSender = (env.BREVO_SMS_SENDER || "Vaspoor").trim();
   const brevoCountryCode = (env.BREVO_SMS_COUNTRY_CODE || "977").replace(/\D/g, "");
   if (notifyDriver === "brevo") {
     if (brevoApiKey.length < 20) errors.push("BREVO_API_KEY is required when NOTIFY_DRIVER=brevo (Brevo > SMTP & API > API keys)");
@@ -75,7 +75,7 @@ export function loadConfig(env = process.env) {
   const pharmacyEmail = emailOrNull("PHARMACY_SUPPORT_EMAIL");
   const generalEmail = emailOrNull("GENERAL_SUPPORT_EMAIL");
 
-  // ---- Vyra Call (WebRTC voice calls, customer <-> Vyra Shop). STUN is public; TURN uses time-limited credentials derived
+  // ---- Vaspoor Call (WebRTC voice calls, customer <-> Vaspoor Shop). STUN is public; TURN uses time-limited credentials derived
   // from CALLS_TURN_SECRET (coturn `use-auth-secret`), so no long-lived TURN password ever reaches a browser.
   const urlList = (name, schemes) => {
     const list = (env[name] || "").split(",").map((x) => x.trim()).filter(Boolean);

@@ -2,7 +2,7 @@ import { buildIceServers } from "./calls.ice.js";
 import { AppError, conflict, forbidden, notFound, unavailable } from "../utils/errors.js";
 
 /**
- * Vyra Call — authorisation, state machine and signaling for customer <-> Vyra Shop voice calls.
+ * Vaspoor Call — authorisation, state machine and signaling for customer <-> Vaspoor Shop voice calls.
  *
  * Who is who is NEVER taken from the request: a caller is the call's "customer" iff call.customer_id is their user id, and its
  * "shop" iff they are the owner account of call.seller_id (the existing shop ownership model: sellers.owner_user_id). A user
@@ -94,8 +94,8 @@ export function createCallsService({ pool, withTx, repos, realtime, config, logg
   }
 
   const unavailableReasons = {
-    disabled_by_config: "Vyra Call is switched off right now.",
-    turn_not_configured: "Vyra Call isn't available yet on this server.",
+    disabled_by_config: "Vaspoor Call is switched off right now.",
+    turn_not_configured: "Vaspoor Call isn't available yet on this server.",
   };
 
   /** Shared by the customer's "Call shop" button and start(): the shop's REAL availability, from its heartbeat and open calls. */
@@ -118,7 +118,7 @@ export function createCallsService({ pool, withTx, repos, realtime, config, logg
 
   return {
     iceServers: (user) => {
-      if (!cfg.enabled) throw unavailable("CALLS_DISABLED", unavailableReasons[cfg.disabledReason] ?? "Vyra Call is unavailable.");
+      if (!cfg.enabled) throw unavailable("CALLS_DISABLED", unavailableReasons[cfg.disabledReason] ?? "Vaspoor Call is unavailable.");
       return buildIceServers({ calls: cfg }, user.id);
     },
 
@@ -128,7 +128,7 @@ export function createCallsService({ pool, withTx, repos, realtime, config, logg
 
     // ================================================================= customer
     async start(user, { sellerId, clientCallId }) {
-      if (!cfg.enabled) throw unavailable("CALLS_DISABLED", unavailableReasons[cfg.disabledReason] ?? "Vyra Call is unavailable.");
+      if (!cfg.enabled) throw unavailable("CALLS_DISABLED", unavailableReasons[cfg.disabledReason] ?? "Vaspoor Call is unavailable.");
       const run = () => withTx(async (db) => {
         const again = await repo.byClientId(db, user.id, clientCallId);
         if (again) return dto(await repo.withNames(db, again.id), "customer"); // a retry/double-tap: same call, no second ring
@@ -267,9 +267,9 @@ export function createCallsService({ pool, withTx, repos, realtime, config, logg
 
     // ================================================================= shop console
     async setPresence(user, { accepting }) {
-      if (!cfg.enabled) throw unavailable("CALLS_DISABLED", unavailableReasons[cfg.disabledReason] ?? "Vyra Call is unavailable.");
+      if (!cfg.enabled) throw unavailable("CALLS_DISABLED", unavailableReasons[cfg.disabledReason] ?? "Vaspoor Call is unavailable.");
       const shop = await repo.shopByOwner(pool, user.id);
-      if (!shop || shop.status !== "active") throw forbidden("NOT_A_SHOP", "Only an active Vyra Shop can take calls.");
+      if (!shop || shop.status !== "active") throw forbidden("NOT_A_SHOP", "Only an active Vaspoor Shop can take calls.");
       const until = await repo.setPresence(pool, { sellerId: shop.id, userId: user.id, accepting, ttlSeconds: cfg.shopPresenceTtlSeconds });
       return { online: true, accepting, until: iso(until), shop: { id: shop.id, name: shop.name } };
     },
@@ -293,7 +293,7 @@ export function createCallsService({ pool, withTx, repos, realtime, config, logg
     /** The shop's OWN history. There is no shop id in the request: the shop is whichever one the caller owns. */
     async shopHistory(user, { page, pageSize, missedOnly }) {
       const shop = await repo.shopByOwner(pool, user.id);
-      if (!shop) throw forbidden("NOT_A_SHOP", "Only a Vyra Shop can see call history.");
+      if (!shop) throw forbidden("NOT_A_SHOP", "Only a Vaspoor Shop can see call history.");
       const { rows, total } = await repo.shopHistory(pool, { sellerId: shop.id, limit: pageSize, offset: (page - 1) * pageSize, missedOnly });
       return {
         total, page, pageSize,

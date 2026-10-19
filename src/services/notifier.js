@@ -43,7 +43,7 @@ export function createNotifier({ driver, logger, webhookUrl, webhookSecret, brev
     /**
      * Brevo transactional email (POST /v3/smtp/email) and transactional SMS (POST /v3/transactionalSMS/send), authenticated with
      * the `api-key` header. Brevo wants SMS recipients as digits WITH the country code and no "+": a 10-digit national number
-     * (how Vyra stores Nepal mobiles, e.g. 9812345678) gets the configured country code (default 977) in front.
+     * (how Vaspoor stores Nepal mobiles, e.g. 9812345678) gets the configured country code (default 977) in front.
      * Non-2xx or a timeout throws so the outbox worker retries; the error text never contains the key, the number or the message.
      */
     const fail = (channel, reason, detail = {}) => {

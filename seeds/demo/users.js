@@ -10,7 +10,7 @@ import { hashPassword } from "../../src/utils/password.js";
  */
 const DEMO_USERS = [
   { name: "Alex Morgan", email: "alex.morgan@example.com", mobile: "+1 555 0190", legacyId: "cus-1001", roles: ["customer"], customer: true },
-  { name: "Vyra Admin", email: "admin@vyra.example", roles: ["admin"] },
+  { name: "Vaspoor Admin", email: "admin@vyra.example", roles: ["admin"] },
   { name: "Dr. N. Rao", email: "pharmacist@vyra.example", roles: ["pharmacist"] },
   { name: "Daniel R.", email: "rider@vyra.example", roles: ["delivery"] },
   { name: "Priya S.", email: "rider2@vyra.example", roles: ["delivery"] },

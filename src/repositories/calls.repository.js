@@ -1,4 +1,4 @@
-/** SQL for Vyra Call. Every method takes `db` (pool or transaction client), like the other repositories. */
+/** SQL for Vaspoor Call. Every method takes `db` (pool or transaction client), like the other repositories. */
 const OPEN = "('ringing','connecting','active')";
 
 export function createCallsRepository() {

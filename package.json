@@ -2,7 +2,7 @@
   "name": "vyra-backend",
   "private": true,
   "version": "0.1.0",
-  "description": "Vyra API — one modular backend for customer, admin, seller, pharmacy, delivery and POS.",
+  "description": "Vaspoor API — one modular backend for customer, admin, seller, pharmacy, delivery and POS.",
   "type": "module",
   "engines": { "node": ">=22.9" },
   "scripts": {

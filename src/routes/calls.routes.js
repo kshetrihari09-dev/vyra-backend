@@ -4,7 +4,7 @@ import { validate } from "../middleware/validate.js";
 import * as v from "../validators/calls.validators.js";
 
 /**
- * Vyra Call. Every route needs a signed-in user; WHICH side of a call they are is decided in the service from the database
+ * Vaspoor Call. Every route needs a signed-in user; WHICH side of a call they are is decided in the service from the database
  * (call.customer_id / the shop they own), never from anything in the request. Shop-only routes also require the existing
  * `seller:manage_own` permission, and the shop is always the caller's own (no shop id is accepted).
  * Rate limiters sit AFTER authenticate so they key on the user, not the IP.

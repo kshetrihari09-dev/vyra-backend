@@ -25,7 +25,7 @@ export function createOrdersService({ pool, withTx, repos, phoneTrust = null, pr
   }
 
   /** Staff (orders:read_all) and the buyer see the whole order. A shop owner who isn't the buyer sees only their own
-   *  lines, plus whether that is the whole basket (a shared basket's status is coordinated by Vyra, not by one shop). */
+   *  lines, plus whether that is the whole basket (a shared basket's status is coordinated by Vaspoor, not by one shop). */
   function viewFor(row, items, actor, shop) {
     if (row.user_id === actor?.id || can(actor, "orders:read_all") || !shop) return { items };
     const own = items.filter((i) => i.seller_id === shop.id);
